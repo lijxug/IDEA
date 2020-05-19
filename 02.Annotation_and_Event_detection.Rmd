@@ -1,0 +1,564 @@
+---
+title: "AS in LUNG TIL: calculate Enrichment"
+author: "Jason Li"
+date: "`r Sys.Date()`"
+# output:
+#   html_notebook:
+#     fig_caption: yes
+#     toc: yes
+#   html_document:
+#     df_print: paged
+#     toc: yes
+---
+
+```{r, echo=FALSE}
+# !diagnostics off
+knitr::opts_chunk$set(
+  comment = "#>",
+  collapse = TRUE,
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE
+)
+```
+
+# Setting parameters 
+```{r}
+wd = getwd()
+source(paste0(wd, "/utils/ToolKit.R"))
+source(paste0(wd, "/utils/utils.R"))
+target_CDType = "CD8" 
+
+# out_dir = "/your/path/"
+input_dir = paste0(wd, "/../IDEA_data/02.IDEAoutputs/")
+out_dir = paste0(wd, "/../IDEA_data/02.IDEAoutputs/")
+
+path_to_GENEStructure = paste0(wd, "/../IDEA_data/01.IDEAinputs/GRCh38.p12.biomart.transcripts.structure.txt")
+
+
+usage_cutoff = 0.75
+transcript_express_cutoff = 10
+step = 100
+cores_to_use = 10
+
+# functional annotation settings ----
+python_dir = "/your/python/direction/"
+work_dir = paste0(wd, "/utils/")
+getseq_dir = paste0(work_dir, "/ensembl_rest_client.py")
+getfunc_dir = paste0(work_dir, "/iprscan5_urllib3.py")
+tsv_path = paste0(wd, "/../IDEA_data/03.annotations/tsv/")
+fasta_path = paste0(wd, "/../IDEA_data/03.annotations/fasta/")
+tsv_files = Sys.glob(paste0(tsv_path, "*tsv*"))
+```
+
+# Loading 
+```{r input}
+# ---- loading dependencies ----
+suppressPackageStartupMessages(library("tidyverse"))
+suppressPackageStartupMessages(library("reshape2"))
+suppressPackageStartupMessages(library("parallel"))
+suppressPackageStartupMessages(library("ggforce"))
+suppressPackageStartupMessages(library("patchwork"))
+suppressPackageStartupMessages(library("openxlsx"))
+suppressPackageStartupMessages(library("tidygraph"))
+suppressPackageStartupMessages(library("ggraph"))
+theme_set(theme_classic(base_size = 20))
+
+
+# load data ----
+load(paste0(out_dir, "01.", target_CDType, "_analysis_bundle.RDa"))
+STRUCT.INFO = readr::read_tsv(path_to_GENEStructure)
+STRUCT.INFO = STRUCT.INFO %>% dplyr::mutate(`Transcript name` = GENE.INFO$`Transcript name`[match(`Transcript stable ID`, GENE.INFO$`Transcript stable ID`)])
+
+
+txs_to_annotate = (GENE.INFO %>% dplyr::filter(`Gene name` %in% enrichment_filter_tbl$gene_name))$`Transcript name` %>% unique()
+```
+
+### function & structure annotation preparation
+```{r gather annotations for enriched txs}
+# remove noncoding txs
+txs_to_annotate_CD = (GENE.INFO[match(txs_to_annotate, GENE.INFO$`Transcript name`), ] %>% dplyr::filter(!is.na(`Protein stable ID`)))$`Transcript name`
+
+# annotating ----
+iter01 = ".I1"
+initiatePB(iter01)
+step = 100
+steps = c(seq(1, length(txs_to_annotate_CD), by = step), length(txs_to_annotate_CD)+1)
+for(i in 2:length(steps)){
+  t_txs_toannotate = txs_to_annotate_CD[steps[i-1]:(steps[i]-1)]
+  t_status = mclapply(t_txs_toannotate, mc.cores = cores_to_use, function(chosen_tx) {
+    tryCatch({
+    seq_path = paste0(fasta_path, chosen_tx, ".fasta")
+    if(file.exists(seq_path)){
+      return(T)
+    }
+    seq_contents = ''
+    x = system2(python_dir, args = c(getseq_dir, "get_sequence", chosen_tx %>% transName2transid(), "-t", "protein"), stdout = T)
+    y = x[6] %>% stringr::str_split('\"',simplify = T)
+    trans_seq = y[4]
+    seq_contents = paste0(seq_contents,
+                         '> ' , chosen_tx, " | ", chosen_tx %>% transName2transid(), "\n",
+                         trans_seq, "\n")
+    # write file 
+    readr::write_file(seq_contents, seq_path)
+    return(T)
+    }, error = function(e) return(F))
+    }
+    )
+  if(length(t_txs_toannotate[!t_status %>% unlist]) > 0){
+    warning(paste0(t_txs_toannotate[!t_status %>% unlist], collapse = ","), " extraction failed!")
+  }
+  processBar(iter01, i, length(steps), tail = "ETA") 
+}
+```
+
+```{shell interpro api batch script}
+to_run="txs_to_run_part01"; cat $to_run | while read file ; do ${IDEA_path}/utils/iprscan5_urllib3.py --outfile=${IDEA_path}/03.annotations/tsv/${file} --outformat=tsv --email=${your_email} --goterms --pathways --quiet ${IDEA_path}/03.annotations/fasta/${file} || echo $file >> ${to_run}.errlog ; done 
+```
+
+```{r function/structure feature annotate}
+all_domain_info_tbl = local_loadDomains(tsv_files)
+
+# original detail tibble 
+txs_detail_tbl = GENE.INFO[match(txs_to_annotate, GENE.INFO$`Transcript name`), ]
+
+# transcript structure annotation ----
+exons_tbl = STRUCT.INFO %>% group_by(`Transcript name`, `Transcript stable ID`) %>% summarise(exons = paste0(`Exon stable ID`, collapse = "|"))
+
+txs_detail_tbl = txs_detail_tbl %>% 
+  dplyr::mutate(
+     `Exon IDs` = exons_tbl$exons[match(`Transcript name`, exons_tbl$`Transcript name`)], 
+     Strand = STRUCT.INFO$Strand[match(`Transcript name`, STRUCT.INFO$`Transcript name`)]
+  )
+
+# protein structure annotation ----
+# SignalP, Transmembrane, Pfam domain
+signalP_tbl = all_domain_info_tbl %>% dplyr::select("Transcript name", "database", "item", "description") %>% distinct() %>% dplyr::filter(database == "SignalP_EUK")
+transM_tbl = all_domain_info_tbl %>% dplyr::filter(database == "TMHMM") %>% dplyr::select("Transcript name", "database", "item", "begin", "end") %>% distinct() %>% group_by(`Transcript name`) %>% summarise(TMM_count = n())
+pfam_tbl = all_domain_info_tbl %>% dplyr::filter(database == "Pfam") %>% dplyr::select("Transcript name", "database", "item", "begin", "end", "length") %>% distinct() %>% group_by(`Transcript name`) %>% summarise(pfam_domains = paste0(sort(item), collapse = "|"))
+  
+txs_detail_tbl = txs_detail_tbl %>% 
+  dplyr::mutate(
+    SignalP = signalP_tbl$item[match(`Transcript name`, signalP_tbl$`Transcript name`)],
+    Transmembrane_number = transM_tbl$TMM_count[match(`Transcript name`, transM_tbl$`Transcript name`)],
+    Pfam_domains = pfam_tbl$pfam_domains[match(`Transcript name`, pfam_tbl$`Transcript name`)]
+  )
+
+# fill 0 in coding Txs
+is_coding_txs = txs_detail_tbl$`Protein stable ID` %>% is.na() %>% `!`
+no_signalP_txs = is.na(txs_detail_tbl$SignalP)
+no_TM_txs = is.na(txs_detail_tbl$Transmembrane_number)
+
+txs_detail_tbl$SignalP[is_coding_txs & no_signalP_txs] = ""
+txs_detail_tbl$Transmembrane_number[is_coding_txs & no_TM_txs] = 0
+
+# add bioType
+txs_detail_tbl = txs_detail_tbl %>% dplyr::mutate(bioType = type2bio(`Transcript type`))
+
+# add protein seq
+fasta_files = Sys.glob(paste0(fasta_path, "*.fasta"))
+txs_names = stringr::str_extract(fasta_files, pattern = "(?<=/)\\w+-\\d{3}(?=\\.fasta)")
+protein_seqs = mclapply(fasta_files, mc.cores = cores_to_use, function(x){
+  read_tsv(x, col_types = "c") %>% as.character()
+}) %>% unlist()
+names(protein_seqs) = txs_names
+
+txs_detail_tbl = txs_detail_tbl %>% dplyr::mutate(prot_seq = protein_seqs[`Transcript name`])
+
+txs_detail_tbl = txs_detail_tbl %>% dplyr::mutate(
+  subcellular = local_determineSubcellular(SignalP, Transmembrane_number))
+
+```
+
+### Enrichment changing events detection
+```{r change events extraction & annotation}
+# extract change events gene by gene
+enrichment_event_tbl = tibble()
+chosen_genes = enrichment_filter_tbl$gene_name %>% unique()
+iter01 = ".I1"
+initiatePB(iter01)
+for(i in 1:length(chosen_genes)){
+  chosen_gene = chosen_genes[i]
+  t_tbl = enrichment_filter_tbl %>% dplyr::filter(gene_name == chosen_gene)
+  clusters = t_tbl$cluster %>% unique() %>% sort()
+  
+  # recombination 
+  cluster_pairs = combn(clusters, 2) %>% t() 
+  colnames(cluster_pairs) = c("Cluster1", "Cluster2")
+  t_reformat_enrichment_tbl = as_tibble(cluster_pairs)
+  t_reformat_enrichment_tbl = t_reformat_enrichment_tbl %>% dplyr::mutate(
+    gene_name = t_tbl$gene_name[1],
+    C1_Tx1 = local_clusterSpec_txs(Cluster1, t_tbl),
+    C2_Tx2 = local_clusterSpec_txs(Cluster2, t_tbl)
+  ) %>% dplyr::filter(C1_Tx1 != C2_Tx2) # remove exactly same enrichment in two cluster
+  
+  # expand each row to make them one tx pairs at a time
+  if(nrow(t_reformat_enrichment_tbl)){
+    t_reformat_enrichment_tbl = local_expand(t_reformat_enrichment_tbl)
+    # sum up
+    enrichment_event_tbl = bind_rows(enrichment_event_tbl, t_reformat_enrichment_tbl)
+  }
+  
+  processBar(iter01, i, length(chosen_genes), tail = "ETA")
+}
+rm(cluster_pairs)
+
+# remove same enriched items
+enrichment_event_tbl = enrichment_event_tbl %>% dplyr::filter(C1_Tx1 != C2_Tx2)
+
+
+enrichment_event_tbl = enrichment_event_tbl %>% dplyr::mutate(`Transcript pairs` = local_sortPairs(`C1_Tx1`, `C2_Tx2`))
+
+
+feature_tocompare = c("Transcript type", "bioType", "Transcription start site (TSS)", "Exon IDs", "SignalP", "Transmembrane_number", "Pfam_domains", "prot_seq", "subcellular")
+
+Tx1_details_tbl = txs_detail_tbl[match(enrichment_event_tbl$C1_Tx1, txs_detail_tbl$`Transcript name`), ] %>% 
+  dplyr::select_(.dots = paste0("`", feature_tocompare, "`"))
+Tx2_details_tbl = txs_detail_tbl[match(enrichment_event_tbl$C2_Tx2, txs_detail_tbl$`Transcript name`), ] %>% 
+  dplyr::select_(.dots = paste0("`", feature_tocompare, "`"))
+
+colnames(Tx1_details_tbl) = paste0("Tx1-", colnames(Tx1_details_tbl))
+colnames(Tx2_details_tbl) = paste0("Tx2-", colnames(Tx2_details_tbl))
+
+enrichment_event_ann_tbl = bind_cols(
+  enrichment_event_tbl, 
+  Tx1_details_tbl, Tx2_details_tbl
+)
+
+
+# common procedure to compare changes (just see if they are the same)
+initiatePB(iter01)
+for(i in 1:length(feature_tocompare)){
+  feature = feature_tocompare[i]
+  enrichment_event_ann_tbl = local_detectChanges(enrichment_event_ann_tbl, feature)
+  processBar(iter01, i, length(feature_tocompare))
+}
+enrichment_event_ann_tbl$`Gene name` = enrichment_event_ann_tbl$gene_name
+
+# pfam domain changes detected by annother procedure 
+enrichment_event_ann_tbl = enrichment_event_ann_tbl %>% dplyr::mutate(`Change-Pfam_domains_details` = as.character(`Change-Pfam_domains`))
+pairs_pfmChanged_idx = enrichment_event_ann_tbl$`Change-Pfam_domains` & !is.na(enrichment_event_ann_tbl$`Change-Pfam_domains`) 
+
+pfmChange_tbl = enrichment_event_ann_tbl[pairs_pfmChanged_idx, ] %>% dplyr::select(`Transcript pairs`, `Tx1-Pfam_domains`, `Tx2-Pfam_domains`)
+
+pfmChanges = pfmChange_tbl %>% as.matrix() %>% apply(1, function(x){
+    tx1_pfm = x[2] %>% strsplit(split = "|", fixed = T) %>% unlist() 
+    tx2_pfm = x[3] %>% strsplit(split = "|", fixed = T) %>% unlist() 
+    tx1_spec_pfm = setdiff(tx1_pfm, tx2_pfm) %>% paste0(collapse = "|")
+    tx2_spec_pfm = setdiff(tx2_pfm, tx1_pfm) %>% paste0(collapse = "|")
+    return(paste0(
+      "Tx1:", tx1_spec_pfm, ";",
+      "Tx2:", tx2_spec_pfm
+    ))
+})
+
+enrichment_event_ann_tbl$`Change-Pfam_domains_details`[pairs_pfmChanged_idx] = pfmChanges
+
+# change the order of column names
+col_names = colnames(enrichment_event_ann_tbl)
+enrichment_event_ann_tbl = enrichment_event_ann_tbl %>% dplyr::select(
+  `Gene name`, `Cluster1`, `Cluster2`, `C1_Tx1`, `C2_Tx2`, `Transcript pairs`, 
+  starts_with("Change"), starts_with("Tx1-"), starts_with("Tx2-")
+)
+events_tbl_toStore = enrichment_event_ann_tbl
+
+# export to table ----
+require(openxlsx)
+wb = EXWB.initiate()
+wb = EXWB.writeSheet(wb, paste0(target_CDType, "_byClusters_allEvents"), events_tbl_toStore, overwrite = T)
+# openxlsx::saveWorkbook(wb, file = paste0(WhereAmI("01.DATA/01.ASinLung/04.tables/"), "CD8_byClusters_allEvents_",format(x = Sys.time(), "%m%d"), ".xlsx"), overwrite = T)
+
+# clear trash ----
+rm(Tx1_details_tbl, Tx2_details_tbl, pfmChange_tbl, pfmChanges, events_tbl_toStore)
+invisible(gc())
+```
+
+```{r additional feature}
+# event types ----
+enrichment_event_ann_tbl = enrichment_event_ann_tbl %>% 
+  dplyr::mutate(
+    involved_MIX = grepl(`Transcript pairs`, pattern = "MIX"), 
+    involved_txs = grepl(`Transcript pairs`, pattern = "-\\d{3}")
+  )
+enrichment_event_ann_txs2txs_tbl = enrichment_event_ann_tbl %>% dplyr::filter(!involved_MIX)
+
+enrichment_event_ann_txs2txs_tbl = enrichment_event_ann_txs2txs_tbl %>% 
+  dplyr::mutate(
+    `Tx1-prot_seq` = protein_seqs[match(C1_Tx1, names(protein_seqs))],
+    `Tx2-prot_seq` = protein_seqs[match(C2_Tx2, names(protein_seqs))],
+    `Change-prot_seq` = (`Tx1-prot_seq` != `Tx2-prot_seq`)
+)
+
+```
+
+
+```{r biotype changes, fig.height=8, fig.width=8}
+enrichment_event_ann_txs2txs_tbl = enrichment_event_ann_txs2txs_tbl %>% filter(`Tx1-bioType` %in% c("protein_coding", "long_nc"), `Tx2-bioType` %in% c("protein_coding", "long_nc"))
+
+t_chosen_genes = enrichment_event_ann_txs2txs_tbl$`Gene name` %>% unique()
+t_enrichment_filter_tbl = enrichment_filter_tbl %>% filter(gene_name %in% t_chosen_genes) %>% 
+  filter(!grepl(id, pattern = "MIX")) %>% 
+  mutate(bioType = txs_detail_tbl$bioType[match(id, txs_detail_tbl$`Transcript name`)])
+(t_enrichment_filter_tbl %>% dplyr::select(id, bioType) %>% distinct())$bioType %>% table()
+pGenes$Gene.type[match(t_chosen_genes, pGenes$gene_name)] %>% table()
+
+t_biotype_change_tbl = enrichment_event_ann_txs2txs_tbl %>%
+  group_by(`Tx1-bioType`, `Tx2-bioType`) %>% summarise(count = n()) %>% 
+  mutate(item = local_sortPairs(`Tx1-bioType`, `Tx2-bioType`,sep = "-")) %>% 
+  group_by(item) %>% summarise(count = sum(count))
+
+  
+# export to table ----
+wb = EXWB.writeSheet(wb, "biotypeChangingEvents",
+                     enrichment_event_ann_txs2txs_tbl %>% dplyr::filter(`Change-bioType`), overwrite = T)
+```
+
+#### Describe events by the changes
+```{r potential functional changes}
+require(ggrepel)
+require(ggforce)
+
+# potential functional impact of all changes between coding isforms ----
+enr_coding_events_tbl = enrichment_event_ann_txs2txs_tbl %>% dplyr::filter(`Tx1-bioType` == "protein_coding" & `Tx2-bioType` == "protein_coding") 
+
+prot_seq_change_events_tbl = enr_coding_events_tbl %>% dplyr::filter(`Change-prot_seq`)
+
+
+
+prot_seq_pie_tbl = tibble(
+  item = c("Same protein", "Different protein"), 
+  amount = c(sum(!enr_coding_events_tbl$`Change-prot_seq`, na.rm = T), sum(enr_coding_events_tbl$`Change-prot_seq`, na.rm = T)),
+  r0 = 0,
+  r = 1
+)
+prot_seq_pie_tbl = local_addpositionForpie(prot_seq_pie_tbl)
+
+TSS_pie_tbl = tibble(
+  item = c("Same TSS", "Different TSS"),
+  amount = c(sum(!(enr_coding_events_tbl %>% dplyr::filter(!`Change-prot_seq`))$`Change-Transcription start site (TSS)`), sum((enr_coding_events_tbl %>% dplyr::filter(!`Change-prot_seq`))$`Change-Transcription start site (TSS)`)), 
+  r0 = 1, 
+  r = 1.5
+)
+
+TSS_pie_tbl = local_addpositionForpie(
+  TSS_pie_tbl, 
+  arc_start = prot_seq_pie_tbl$start[with(prot_seq_pie_tbl, item == "Same protein")],
+  arc_end = prot_seq_pie_tbl$end[with(prot_seq_pie_tbl, item == "Same protein")]
+)
+total_pie_tbl = bind_rows(prot_seq_pie_tbl, TSS_pie_tbl)
+
+
+subcellular_pie_tbl = tibble(
+  item = c("Subcellular location changed", "Subcellular location unchanged"),
+  amount = c(sum(prot_seq_change_events_tbl$`Change-subcellular`), sum(!prot_seq_change_events_tbl$`Change-subcellular`)), 
+  r0 = 1.5, 
+  r = 2
+)
+subcellular_pie_tbl = local_addpositionForpie(
+  subcellular_pie_tbl, 
+  arc_start = prot_seq_pie_tbl$start[with(prot_seq_pie_tbl, item == "Different protein")],
+  arc_end = prot_seq_pie_tbl$end[with(prot_seq_pie_tbl, item == "Different protein")]
+)
+total_pie_tbl = bind_rows(total_pie_tbl, subcellular_pie_tbl)
+
+domain_pie_tbl = tibble(
+  item = c("Lack domain infos", "Domain changed", "Domain unchanged"),
+  amount = c(
+    sum(is.na((prot_seq_change_events_tbl %>% dplyr::filter(`Change-subcellular`))$`Change-Pfam_domains`)), 
+    sum((prot_seq_change_events_tbl %>% dplyr::filter(`Change-subcellular`))$`Change-Pfam_domains`, na.rm = T), 
+    sum(!(prot_seq_change_events_tbl %>% dplyr::filter(`Change-subcellular`))$`Change-Pfam_domains`, na.rm = T)), 
+  r0 = 2, 
+  r = 2.5
+)
+domain_pie_tbl = local_addpositionForpie(
+  domain_pie_tbl,
+  arc_start = total_pie_tbl$start[with(total_pie_tbl, item == "Subcellular location changed")],
+  arc_end = total_pie_tbl$end[with(total_pie_tbl, item == "Subcellular location changed")]
+)
+total_pie_tbl = bind_rows(total_pie_tbl, domain_pie_tbl)
+
+domain_pie_tbl = tibble(
+  item = c("Lack domain infos", "Domain changed", "Domain unchanged"),
+  amount = c(
+    sum(is.na((prot_seq_change_events_tbl %>% dplyr::filter(!`Change-subcellular`))$`Change-Pfam_domains`)), 
+    sum((prot_seq_change_events_tbl %>% dplyr::filter(!`Change-subcellular`))$`Change-Pfam_domains`, na.rm = T), 
+    sum(!(prot_seq_change_events_tbl %>% dplyr::filter(!`Change-subcellular`))$`Change-Pfam_domains`, na.rm = T)), 
+  r0 = 2, 
+  r = 2.5
+)
+domain_pie_tbl = local_addpositionForpie(
+  domain_pie_tbl,
+  arc_start = total_pie_tbl$start[with(total_pie_tbl, item == "Subcellular location unchanged")],
+  arc_end = total_pie_tbl$end[with(total_pie_tbl, item == "Subcellular location unchanged")]
+)
+total_pie_tbl = bind_rows(total_pie_tbl, domain_pie_tbl)
+
+# detailed legend 
+total_pie_tbl$item = factor(
+  total_pie_tbl$item,
+  levels = c(
+    "Protein:", 
+    total_pie_tbl$item %>% grep(pattern = "protein", value = T),
+    "TSS:",
+    total_pie_tbl$item %>% grep(pattern = "TSS", value = T),
+    "Subcellular:",
+    total_pie_tbl$item %>% grep(pattern = "Subcellular", value = T),
+    "Domain:",
+    unique(total_pie_tbl$item %>% grep(pattern = "domain", ignore.case = T, value = T))
+  )
+)
+my_cols = gg_color_hue(total_pie_tbl$item %>% unique() %>% length())
+
+total_pie_tbl %>% dplyr::mutate(
+  middle_theta = start + (end - start)/2,
+  middle_raddi = r0 + (r-r0)/2,
+  label_x = middle_raddi * sin(middle_theta),
+  label_y = middle_raddi * cos(middle_theta), 
+) %>% 
+  ggplot() + coord_fixed() + theme_no_axes(base.theme = theme_bw(base_size = 18)) +
+  geom_arc_bar(
+    aes(x0 = 0, y0 = 0, r0 = r0, r = r,
+        start = start, end = end, fill = item),
+    color = "white"
+  ) + 
+  scale_fill_manual(
+    values=c("white", my_cols[1:2], 
+             "white", my_cols[3:4], 
+             "white", my_cols[5:6],
+             "white", my_cols[7:9]), drop=FALSE) +
+  geom_text(aes(x = label_x, y = label_y, label = ifelse(amount > 5, amount, ""))) +
+  theme(legend.title = element_blank()) +
+  labs(title = "Classification isoform-isoform coding events")
+
+
+# export to table ----
+wb = EXWB.writeSheet(wb, "SameproteinDiffTSSEvents",
+                     sheetData = enr_coding_events_tbl %>% dplyr::filter(!`Change-prot_seq` & `Change-Transcription start site (TSS)`), overwrite = T)
+wb = EXWB.writeSheet(wb, "SubcellularChangeEvents", sheetData =
+                       prot_seq_change_events_tbl %>%
+                       dplyr::filter(`Change-subcellular`),
+                     overwrite = T)
+wb = EXWB.writeSheet(wb, "DomainsChangeEvents", sheetData =
+                       prot_seq_change_events_tbl %>%
+                       dplyr::filter(`Change-Pfam_domains`),
+                     overwrite = T)
+wb = EXWB.writeSheet(wb, "Neither_sub&domains_changed", sheetData =
+                       prot_seq_change_events_tbl %>% dplyr::filter(!`Change-subcellular` & !`Change-Pfam_domains`), overwrite = T)
+```
+
+#### Calculate genes by event types
+```{r}
+genes_withDEisotypes = (enrichment_event_ann_txs2txs_tbl %>% filter(`Change-Transcription start site (TSS)`))$`Gene name` %>% unique
+
+genes_withBiotype = (enrichment_event_ann_txs2txs_tbl %>% filter(`Change-bioType`))$`Gene name` %>% unique 
+
+enr_coding_events_tbl = enrichment_event_ann_txs2txs_tbl %>% dplyr::filter(`Tx1-bioType` == "protein_coding" & `Tx2-bioType` == "protein_coding") 
+
+genes_samePropDiffTSS = (enr_coding_events_tbl %>% filter(!`Change-prot_seq`&`Change-Transcription start site (TSS)`))$`Gene name` %>% unique() 
+
+# genes_domainChange = enr_coding_events_tbl %>% filter(!(`Change-subcellular`)& `Change-Pfam_domains`) %>% with(`Gene name`) %>% unique()
+genes_domainChange = enr_coding_events_tbl %>% filter(`Change-Pfam_domains`) %>% with(`Gene name`) %>% unique()
+genes_subcellularChange = enr_coding_events_tbl %>% filter(`Change-subcellular`) %>% with(`Gene name`) %>% unique() 
+
+genes_otherChanges = genes_withDEisotypes %>% setdiff(genes_withBiotype) %>% setdiff(genes_samePropDiffTSS) %>% setdiff(genes_domainChange) %>% setdiff(genes_subcellularChange)
+```
+
+
+```{r detail categories under each category}
+# How exactly did subcellular location changed
+t_subcellular_tbl = prot_seq_change_events_tbl %>% select(matches("subcellular")) %>% arrange(`Tx1-subcellular`)
+t_subcellular_tbl = t_subcellular_tbl[, -1]
+t_subcellulars = t_subcellular_tbl$`Tx1-subcellular` %>% unique() %>% sort()
+t_order1 = match(t_subcellular_tbl$`Tx1-subcellular`, t_subcellulars)
+t_order2 = match(t_subcellular_tbl$`Tx2-subcellular`, t_subcellulars)
+t_change_idx = t_order2 < t_order1
+t_subcellular_location = t_subcellular_tbl[t_change_idx, ]$`Tx1-subcellular`
+t_subcellular_tbl[t_change_idx, ]$`Tx1-subcellular` = t_subcellular_tbl[t_change_idx, ]$`Tx2-subcellular`
+t_subcellular_tbl[t_change_idx, ]$`Tx2-subcellular` = t_subcellular_location
+
+
+t_gtbl = t_subcellular_tbl %>% group_by(`Tx1-subcellular`, `Tx2-subcellular`) %>%
+  summarise(count = n()) %>%
+  as_tbl_graph()
+t_gtbl %>% ggraph(layout = "kk") +
+  geom_edge_loop(aes(label = count, color = count), angle_calc = "along",
+    label_dodge = unit(2.5, 'mm')) +
+  geom_edge_link(
+    aes(label = count, color = count),
+    angle_calc = 'along',
+    label_dodge = unit(2.5, 'mm'),
+  )+
+  geom_node_label(aes(label = name), size = 8) +
+  theme_no_axes(theme_bw(base_size = 20)) +
+  coord_cartesian(xlim = c(-1,1.5))
+
+# domain change statistic 
+t_domain_tbl = prot_seq_change_events_tbl %>% filter(`Change-Pfam_domains`)
+```
+
+To relate all these events with functions, I have to link them to their potential functional changes and see if they can reveal something new in C1-C2-C3(as control) and C1-C6(as negative control) and C3-C4-C6 vs C5-C6 (to find new insights)
+
+#### Describe change events by which clusters they expand
+```{r across genes, fig.width=8, fig.height=8}
+
+# gene counts for all 
+geneCounts_byClusters_tbl = enrichment_event_ann_txs2txs_tbl %>% 
+  dplyr::mutate(col_pairs = local_sortPairs(Cluster1, Cluster2)) %>% 
+  group_by(col_pairs) %>% summarise(gene_count = length(unique(`Gene name`))) %>% 
+  tidyr::separate(col = col_pairs, c("Cluster1", "Cluster2"), sep = ":")
+
+geneCounts_gtbl = geneCounts_byClusters_tbl %>% as_tbl_graph(directed = F)
+
+p_graph = ggraph(geneCounts_gtbl, layout = "kk") +
+  geom_edge_link(aes(label = gene_count, color = gene_count), angle_calc = "along", label_dodge = unit(2.5, 'mm'), ) +
+  ggraph::scale_edge_color_gradient(name = "Gene count", low = "white", high = "red") +
+  geom_node_label(aes(label = name)) + 
+  theme_void() +
+  coord_fixed(xlim = c(-3,3)) +
+  theme(legend.position = "bottom") +
+  theme(legend.position = "bottom") +
+  labs(title = "")
+
+p_graph
+# ggsave(plot = p_graph, device = "pdf", filename = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/03.graphs/04.publishable/Fig3_C6_DEisotypes.pdf", width = 8, height = 8)
+# rm(geneCounts_byClusters_tbl, geneCounts_gtbl)
+
+```
+
+
+#### simple counts for each cluster
+```{r}
+chosen_clusters = union(enrichment_event_ann_txs2txs_tbl$Cluster1 %>% unique(), enrichment_event_ann_txs2txs_tbl$Cluster2 %>% unique()) %>% sort()
+
+p_isoTypes = lapply(chosen_clusters, function(x){
+  with(enrichment_event_ann_txs2txs_tbl, `Gene name`[Cluster1 == x | Cluster2 == x] %>% unique() %>% length())
+}) %>% unlist() %>% setNames(nm = chosen_clusters) %>% enframe() %>% 
+  ggplot(aes(x = name, y = value)) +
+  geom_col(width = 0.8, fill = "white", color = "black") +
+  geom_text(aes(label = ..y..), vjust = -0.4, size = 5) +
+  labs(x = NULL, y = "nGenes with differential isotypes") +
+  scale_y_continuous(expand = expand_scale(mult = c(0, 0.2))) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+p_isoTypes
+# ggsave(plot = p_isoTypes, filename = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/03.graphs/04.publishable/Fig3_isotypeCounts.pdf", device = pdf, )
+
+```
+
+# Storage
+```{r}
+openxlsx::saveWorkbook(wb, file = paste0(out_dir, "/", target_CDType, "_byClusters_allEvents_",format(x = Sys.time(), "%m%d"), ".xlsx"), overwrite = T)
+
+save(
+  enrichment_filter_tbl,
+  enrichment_tbl,
+  GENE.INFO, STRUCT.INFO,
+  pGenes, pCells,
+  exprMat_sum_tbl, 
+  tsv_path,
+  file = paste0(out_dir, "02.", target_CDType, "_analysis_bundle.RDa")
+)
+
+save.image(file = "/data2/jason/data/IDEA_data/02.image.RDa")
+```

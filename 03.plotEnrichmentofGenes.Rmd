@@ -1,0 +1,101 @@
+---
+title: "AS in LUNG TIL: calculate Enrichment"
+author: "Jason Li"
+date: "`r Sys.Date()`"
+# output:
+#   html_notebook:
+#     fig_caption: yes
+#     toc: yes
+#   html_document:
+#     df_print: paged
+#     toc: yes
+---
+
+```{r, echo=FALSE}
+# !diagnostics off
+knitr::opts_chunk$set(
+  comment = "#>",
+  collapse = TRUE,
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  error = FALSE
+)
+```
+
+# Setting parameters 
+```{r}
+wd = getwd()
+source(paste0(wd, "/utils/ToolKit.R"))
+source(paste0(wd, "/utils/utils.R"))
+
+```
+
+# Loading 
+```{r input}
+# ---- loading dependencies ----
+suppressPackageStartupMessages(library("tidyverse"))
+suppressPackageStartupMessages(library("reshape2"))
+suppressPackageStartupMessages(library("patchwork"))
+theme_set(theme_classic(base_size = 20))
+
+target_CDType = "CD8"
+in_dir = paste0(wd, "/../IDEA_data/02.IDEAoutputs/")
+
+load(paste0(in_dir, "02.", target_CDType, "_analysis_bundle.RDa"))
+
+all_obj_lst = read_rds(
+            path = paste0(in_dir, "/", target_CDType, "_enrichment_obj_lst.rds"))
+```
+
+
+
+# Check single gene
+```{r inspect single gene, fig.height=14, fig.width=10}
+theme_set(theme_classic(base_size = 20))
+chosen_gene = "CD8A"
+total = f_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
+total
+
+```
+
+### chosen genes batch outputs
+```{r batch chosen gene inspector, include=FALSE, fig.height=12, fig.width=10}
+chosen_genes = c(
+  "PTPRC",
+  "CD8A",
+  "HAPLN3",
+  "PRDM1",
+  "CCR6",
+  "BTLA"
+)
+
+err_list = c()
+plt_list = list()
+for(i in 1:length(chosen_genes)){
+  tryCatch({
+  chosen_gene = chosen_genes[i]
+  total = f_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
+  if(any(is.na(total))) {
+    next
+  }
+  # ggsave(filename = paste0(i, ".", chosen_gene, ".png"), plot = total, device = "png", path = out_dir, width = 10, height = 14)
+  plt_list[[chosen_gene]] = total
+  loginfo(chosen_gene, " done!")
+  }, error = function(e) {err_list = c(err_list, chosen_gene)})
+}
+print(err_list)
+
+print(plt_list)
+
+out_dir = paste0(
+    WhereAmI("01.DATA/01.ASinLung/03.graphs/04.publishable/"), "publishGenes_",
+    format(x = Sys.time(), "%m%d"), ".pdf")
+
+pdf(file = out_dir, title = chosen_gene, width = 10, height = 14)
+
+# msgASAP(ttl = "Graphs_output_Done")
+
+dev.off()
+
+```

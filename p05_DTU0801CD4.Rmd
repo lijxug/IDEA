@@ -1,5 +1,5 @@
 ---
-title: "AS in LUNG TIL: calculate Enrichment"
+title: "AS in LUNG TIL: DTU analysis"
 author: "Jason Li"
 date: "`r Sys.Date()`"
 # output:
@@ -10,7 +10,6 @@ date: "`r Sys.Date()`"
 #     df_print: paged
 #     toc: yes
 ---
-
 ```{r, echo=FALSE}
 # !diagnostics off
 knitr::opts_chunk$set(
@@ -23,45 +22,104 @@ knitr::opts_chunk$set(
 )
 ```
 
-# Loading
+# Preface 
+DTU analysis
 ```{r input}
-wd = getwd()
-source(paste0(wd, "/utils/ToolKit.R"))
-source(paste0(wd, "/utils/utils.R"))
+suppressWarnings(library("optparse"))
 
+parser <- OptionParser()
+option_list <- list( 
+  make_option(c("-v", "--verbose"), action="store_true", default=TRUE,
+              help="Print extra output [default]"),
+  make_option(c("-q", "--quietly"), action="store_false", 
+              dest="verbose", help="Print little output"),
+  make_option(c("-p", "--parallel_cores"), type = "integer", dest = "cores", default = 6,
+              help="Number of cores used in parallel calculation, [default = %default]")
+)
+
+# wd = getwd()
+inputs = commandArgs(trailingOnly=FALSE)
+script_dir = dirname(sub("--file=", "", inputs[grep("--file=",inputs)]))
+if(!length(script_dir)){
+  script_dir = getwd()
+}
+# print(script_dir)
+source(paste0(script_dir, "/../00.ref_tools/ToolKit.R"))
+source(paste0(script_dir, "/../00.ref_tools/utils.R"))
+
+# get real args
+parser = OptionParser(
+  usage =
+    "%prog [options] <BUNDLE.RDa> <scLUNGObj> <OUTPUT_DIR>
+  Description:
+  This script is used to identify differential usage of transcripts of a genes and try to recognize switch events, 
+  It needs gene-based summation of transcripts tpm to filter out the 'low expressed' genes.
+  It's a preparation step for calculation of FISHER exact tests.
+  This script is powerup by parallel::parApply, make sure the environment supports them first.",
+  option_list = option_list
+) # donot change the format of this doc.
+
+itfs = parse_args(parser, positional_arguments = TRUE) 
+
+itfs = parse_args(parser, positional_arguments = TRUE, args = c(
+  "-p", 6,
+  # WhereAmI("01.DATA/01.ASinLung/02.ready/stringtie/p04.annalyse_bundle.RDa"),
+  WhereAmI("01.DATA/01.ASinLung/02.ready/stringtie_removeHaplotypes/p01.scLUNGsceset.RDS"),
+  WhereAmI("01.DATA/01.ASinLung/06.function_annotation/preferentially_used_transcripts/")
+))
+
+opts = itfs$options
+args = list(
+  obj_file = itfs$args[1],
+  out_dir = itfs$args[2]
+)
+
+# if none arguments input
+if(anyNA(args)){
+  warning("Missing arguments!")
+  parse_args(parser, args = c("--help"))
+  q("no", status = 2)
+}
+
+```
+
+
+```{r loading}
 # ---- loading dependencies ----
 suppressPackageStartupMessages(library("tidyverse"))
 suppressPackageStartupMessages(library("reshape2"))
 suppressPackageStartupMessages(library("parallel"))
-suppressPackageStartupMessages(library("ggforce"))
-suppressPackageStartupMessages(library("patchwork"))
+suppressPackageStartupMessages(library("assertthat"))
 # suppressPackageStartupMessages(library("multidplyr"))
-# suppressPackageStartupMessages(library("pheatmap"))
+suppressPackageStartupMessages(library("UpSetR"))
 suppressPackageStartupMessages(library("openxlsx"))
-# library(extrafont)
 # suppressPackageStartupMessages(library("scater"))
-theme_set(theme_classic(base_size = 20))
+theme_set(theme_classic(base_size = 18))
 
 
 # load data ----
-sceObj = read_rds(paste0(wd, "/../IDEA_data/06.data_totry/p01.scLUNGsceset.RDS_2018July18")) 
+tic = Sys.time()
+sceObj = read_rds(args$obj_file) # should be a RDa bundle
+# load(args$in_file)
 
-# reduce to only CD8 cells for easier calculation
-# chn_clusters = sceObj$`characteristics: majorCluster` %>% unique() %>% grep(pattern = "CD8", value = T) %>% grep(pattern = "C7", invert = T, value = T)
-chn_clusters = sceObj$characteristics..majorCluster %>% unique() %>% grep(pattern = "CD8", value = T) %>% grep(pattern = "C7", invert = T, value = T)
-# chn_cells = sceObj$`characteristics: majorCluster` %in% chn_clusters
+# reduce to only CD4 cells for easier calculation
+chn_clusters = (sceObj$characteristics..majorCluster %>% unique() %>% grep(pattern = "CD4", value = T))[1:9]
 chn_cells = sceObj$characteristics..majorCluster %in% chn_clusters
 sceObj = sceObj[, chn_cells]
 
 # remove txs not in the normal annotation
-wd = getwd()
-GENE.INFO = read_tsv(paste0(wd, "/../IDEA_data/02.IDEAinputs/GRCh38.p12.biomart.transcripts.txt"))
+GENE.INFO = read_tsv(WhereAmI("01.DATA/01.ASinLung/01.raw/GRCh38.p12.biomart.transcripts.txt"))
 GENE.INFO = GENE.INFO %>% dplyr::filter(`Chromosome/scaffold name` %in% c(as.character(1:22), "X", "Y", "MT"))
 
 keep_tx = rownames(sceObj) %in% GENE.INFO$`Transcript name`
 loginfo("Filter out txs on alternative haplotypes: ", sum(keep_tx), "/", length(keep_tx), " remained.")
 
 sceObj = sceObj[keep_tx, ]
+
+# loading Trajectory & clonal information ----
+clonal_tbl = openxlsx::read.xlsx(WhereAmI("01.DATA/01.ASinLung/04.tables/LungTILinfos/LungTIL_Supplementary Table 2.xlsx")) %>% as_tibble()
+CD4_trajectory_coord = read_tsv(WhereAmI("01.DATA/01.ASinLung/02.ready/trajectory/CD4Tcell.traj.coor.txt"))
+
 
 rm(list = grep(ls(), pattern = "^chn_", value = T))
 invisible(gc())
@@ -72,30 +130,31 @@ invisible(gc())
 pCells = as_tibble(colData(sceObj))
 exprMat_all = assay(sceObj,"tpm")
 exprMat_sum = rowsum(exprMat_all, group = rownames(exprMat_all) %>% trans2gene())
-exprMat_sum_tbl = exprMat_sum %>% melt(varnames = c("Gene_name", "Cell_id"), value.name = "tpm") %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(Cell_id, pCells$title)], tissue = pCells$characteristics..tissueType[match(Cell_id, pCells$title)]) %>% as_tibble()
+exprMat_sum_tbl = exprMat_sum %>% melt(varnames = c("Gene_name", "Cell_id"), value.name = "tpm") %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(Cell_id, pCells$title)])
 
-# t_idx = sample(1:nrow(exprMat_all), round(0.2 * nrow(exprMat_all), digits = 0))
-# t_cell_idx = sample(1:ncol(exprMat_all), round(0.2 * ncol(exprMat_all), digits = 0))
-# t_exprMat_tbl = log10(exprMat_all[t_idx, t_cell_idx] + 1) %>% melt(varnames = c("id", "cell_id"), value.name = "log10tpm") %>% as_tibble() %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)]) %>% as_tibble()
-# 
-# require(ggridges)
-# ggplot(t_exprMat_tbl %>% dplyr::filter(log10tpm > 0)) + 
-#   ggridges::geom_density_ridges2(aes(x = log10tpm, y = cluster, fill = cluster))+
-#   geom_vline(xintercept = 1, linetype = 2) +
-#   theme(legend.position = "bottom")
+t_idx = sample(1:nrow(exprMat_all), round(0.2 * nrow(exprMat_all), digits = 0))
+t_cell_idx = sample(1:ncol(exprMat_all), round(0.2 * ncol(exprMat_all), digits = 0))
+t_exprMat_tbl = log10(exprMat_all[t_idx, t_cell_idx] + 1) %>% melt(varnames = c("id", "cell_id"), value.name = "log10tpm") %>% as_tibble() %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)]) %>% as_tibble()
 
-# t_idx = sample(1:nrow(usageMat), round(0.2 * nrow(usageMat), digits = 0))
-# t_cell_idx = sample(1:ncol(usageMat), round(0.2 * ncol(usageMat), digits = 0))
-# t_usageMat_tbl = usageMat[t_idx, t_cell_idx] %>% melt(varnames = c("id", "cell_id"), value.name = "usage") %>% as_tibble() %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)]) %>% as_tibble()
+require(ggridges)
 
-# require(ggridges)
-# ggplot(t_usageMat_tbl %>% dplyr::filter(usage > 0)) + 
-#   ggridges::geom_density_ridges2(aes(x = usage, y = cluster, fill = cluster))+
-#   scale_x_continuous(breaks = c(0,0.25,0.5,0.75,1)) +
-#   labs(y = "Cell density")
-# 
-# rm(list = grep(ls(), pattern = "^t_", value = T))
-# invisible(gc())
+usageMat = assay(sceObj, "usage")
+t_idx = sample(1:nrow(usageMat), round(0.2 * nrow(usageMat), digits = 0))
+t_cell_idx = sample(1:ncol(usageMat), round(0.2 * ncol(usageMat), digits = 0))
+t_usageMat_tbl = usageMat[t_idx, t_cell_idx] %>% melt(varnames = c("id", "cell_id"), value.name = "usage") %>% as_tibble() %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)]) %>% as_tibble()
+
+require(ggridges)
+ggplot(t_exprMat_tbl %>% dplyr::filter(log10tpm > 0)) + 
+  ggridges::geom_density_ridges2(aes(x = log10tpm, y = cluster, fill = cluster))+
+  geom_vline(xintercept = 1, linetype = 2) +
+  theme(legend.position = "bottom")
+ggplot(t_usageMat_tbl %>% dplyr::filter(usage > 0)) + 
+  ggridges::geom_density_ridges2(aes(x = usage, y = cluster, fill = cluster))+
+  scale_x_continuous(breaks = c(0,0.25,0.5,0.75,1)) +
+  labs(y = "Cell density")
+
+rm(list = grep(ls(), pattern = "^t_", value = T))
+invisible(gc())
 ```
 
 ```{r data preparation}
@@ -127,6 +186,7 @@ keep_tx = (rownames(usageMat) %>% trans2gene()) %in% genes_morethan1ann
 usageMat = usageMat[keep_tx, ]
 exprMat = exprMat[keep_tx, ]
 
+
 # cleanup ----
 loginfo(length(genes_morethan1ann), "/", nrow(exprMat_sum), " genes with more than 1 annotations")
 loginfo(length(genes_morethan1remain), "/", nrow(exprMat_sum), " genes with more than 1 remian")
@@ -137,39 +197,17 @@ rm(sceObj, keep_tx)
 invisible(gc())
 ```
 
-```{r}
-# # t_expr_markers = exprMat > transcript_express_cutoff
-# t_usageMat = usageMat
-# # t_usageMat[!t_expr_markers] = 0
-# t_dom_counts = apply(t_usageMat, 1, function(x) sum(x > usage_cutoff, na.rm = T))
-# t_dom_counts_tbl = tibble(
-#   txs_id = names(t_dom_counts),
-#   domn_cell_count = t_dom_counts
-# ) %>% dplyr::mutate(gene_name = trans2gene(txs_id))
-# 
-# 
-# t_gene_dmn_iso_count_tbl = t_dom_counts_tbl %>% group_by(gene_name) %>% summarise(dmn_iso_count = sum(domn_cell_count != 0), all_iso_count = length(domn_cell_count)) %>% dplyr::mutate(dmn_ratio = dmn_iso_count/all_iso_count)
-# 
-# t_gene_dmn_iso_count_tbl %>% ggplot() + geom_histogram(aes(x = dmn_ratio)) + scale_y_log10()
-# t_gene_dmn_iso_count_tbl %>% ggplot() + geom_histogram(aes(x = dmn_iso_count)) + scale_y_log10()
-# 
-# # how much of those with one dominant isoforms are because of only one tx annotated
-# t_annotation_counts = (GENE.INFO %>% dplyr::filter(`Gene name` %in% (t_gene_dmn_iso_count_tbl %>% dplyr::filter(dmn_iso_count ==1))$gene_name))$`Gene name` %>% table()
-
-```
-
 ```{r load trajectory}
 # CD4_trajectory_tbl = bind_cols(CD4_trajectory_coord, MajorType = pCells$characteristics..majorCluster[match(CD4_trajectory_coord$Cell, pCells$title)])
-# CD8_trajectory_tbl = bind_cols(CD8_trajectory_coord, MajorType = pCells$characteristics..majorCluster[match(CD8_trajectory_coord$Cell, pCells$title)])
-# ggplot(CD8_trajectory_tbl, aes (x = Component1, y = Component2, color = MajorType)) +
-#   geom_point()
+CD4_trajectory_tbl = bind_cols(CD4_trajectory_coord, MajorType = pCells$characteristics..majorCluster[match(CD4_trajectory_coord$Cell, pCells$title)])
+ggplot(CD4_trajectory_tbl, aes (x = Component1, y = Component2, color = MajorType)) +
+  geom_point()
 
 ```
 
+Nothing's change after gene expression filter, I should not use it
 
 ```{r functions definition}
-usage_cutoff = 0.75
-transcript_express_cutoff = 10
 # function from p03.counts2fisher.R
 counts2FISHER_p = function(countMat, alternative = "greater"){
   sum_trans = apply(countMat, 1, sum)
@@ -193,6 +231,8 @@ counts2FISHER_p = function(countMat, alternative = "greater"){
   return(fisher_res)
 }
 
+usage_cutoff = 0.75
+transcript_express_cutoff = 10
 local_calculate_fishers = function(gene_name, expression_matrix, usage_matrix, cell_info){
 # cutoffs according to p02.usage2labelcounts.R
   # 
@@ -278,11 +318,11 @@ p.adjust.matrix = function(p, ...){
 ```
 
 ### Enrichment calculation
+I would like to annotate enrichment scores for every clusters to determine the enriched transcripts in each cluster.
 ```{r calculate all enrichment infos}
 chosen_genes = exprMat %>% rownames() %>% trans2gene() %>% unique()
 
 step = 100
-cores_to_use = 10
 steps = c(seq(1, length(chosen_genes), by = step), length(chosen_genes)+1)
 iter01 = ".I1"
 initiatePB(iter01)
@@ -290,7 +330,7 @@ all_obj_lst = list()
 for(i in 2:length(steps)){
 # for(i in 1:length(chosen_genes)){
   t_chosen_genes = chosen_genes[steps[i-1]: (steps[i] -1)]
-  obj_lst = mclapply(t_chosen_genes, mc.cores = cores_to_use, FUN = function(chosen_gene){
+  obj_lst = mclapply(t_chosen_genes, mc.cores = opts$cores, FUN = function(chosen_gene){
   # chosen_gene = chosen_genes[i]
   obj = local_calculate_fishers(gene_name = chosen_gene, expression_matrix = exprMat, usage_matrix = usageMat, cell_info = pCells)
     return(obj)
@@ -304,13 +344,13 @@ for(i in 2:length(steps)){
 
 # identify txs with ???
 canonical_txs = mclapply(
-  all_obj_lst, mc.cores = cores_to_use, 
+  all_obj_lst, mc.cores = opts$cores, 
   function(x){ 
     (x$count %>% apply(1, sum) %>% sort(decreasing = T) %>% names())[1] 
     }) %>% unlist()
 canonical_txs = canonical_txs[grep(canonical_txs, pattern = "NO_EXPR|MIX", invert = T)]
 
-enrichment_tbl = do.call(rbind, mclapply(all_obj_lst, mc.cores = cores_to_use, function(x){
+enrichment_tbl = do.call(rbind, mclapply(all_obj_lst, mc.cores = opts$cores, function(x){
   return(x$fisher.p.adj %>% melt(value.name = "enrich_score", varnames = c("id", "cluster")) %>% as_tibble(stringsAsFactors = F) %>% dplyr::filter(enrich_score > -log10(0.05)) %>% mutate_if(is.factor, as.character))
 }))
 enrichment_tbl = enrichment_tbl %>% dplyr::mutate(gene_name = trans2gene(id)) %>% dplyr::distinct() %>% 
@@ -357,11 +397,6 @@ require(patchwork)
 p_top_clusters + plot_spacer() + p_htmp + p_right_ids + 
   plot_layout(ncol = 2, nrow = 2, heights = c(1,3), widths = c(3,1))
 
-# pdf(file = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/03.graphs/04.publishable/FigSupp_CD8_enrichmentCounts.pdf", height = 8, width = 8)
-
-p_top_clusters + plot_spacer() + p_htmp + p_right_ids + 
-  plot_layout(ncol = 2, nrow = 2, heights = c(1,3), widths = c(3,1))
-dev.off()
 # 
 loginfo("# of genes with enrichment: ", length(unique(enrichment_tbl$gene_name)))
 # extract genes with more than 1 tx and 1 cluster ----
@@ -401,7 +436,7 @@ step = 100
 steps = c(seq(1, length(txs_to_annotate_CD), by = step), length(txs_to_annotate_CD)+1)
 for(i in 2:length(steps)){
   t_txs_toannotate = txs_to_annotate_CD[steps[i-1]:(steps[i]-1)]
-  t_status = mclapply(t_txs_toannotate, mc.cores = ccores_to_use, function(chosen_tx) {
+  t_status = mclapply(t_txs_toannotate, mc.cores = opts$cores, function(chosen_tx) {
     tryCatch({
     seq_path = paste0(res_path, chosen_tx, ".fasta")
     if(file.exists(seq_path)){
@@ -444,7 +479,7 @@ to_run="txs_to_run_part01"; cat $to_run | while read file ; do /home/jason/git/0
 
 ```{r loading realted informations}
 # for transcript structure
-STRUCT.INFO = readr::read_tsv(paste0(wd, "/../IDEA_data/02.IDEAinputs/GRCh38.p12.biomart.transcripts.structure.txt"))
+STRUCT.INFO = read_tsv(WhereAmI("01.DATA/01.ASinLung/01.raw/GRCh38.p12.biomart.transcripts.structure.txt"))
 STRUCT.INFO = STRUCT.INFO %>% dplyr::mutate(`Transcript name` = GENE.INFO$`Transcript name`[match(`Transcript stable ID`, GENE.INFO$`Transcript stable ID`)])
 
 local_loadDomains = function(annotation_tsvs, process = T){
@@ -455,7 +490,7 @@ local_loadDomains = function(annotation_tsvs, process = T){
     tmp_file = annotation_tsvs[i]
     trans_name = tmp_file %>% stringr::str_replace(".*//(.*)\\.fasta.*", replacement = "\\1")
     if(file.exists(tmp_file)){
-      trans_info = suppressMessages(suppressWarnings(readr::read_tsv(
+      trans_info = suppressMessages(suppressWarnings(read_tsv(
       tmp_file, col_names = F, progress = F
       )))
       if (nrow(trans_info)){
@@ -480,15 +515,14 @@ local_loadDomains = function(annotation_tsvs, process = T){
     dplyr::mutate(length = end - begin, order = as.integer(as.factor(`Transcript name`)))
     return(domain_info_tbl) 
   } else{
-    warning("local_loadDomains: nothing has been loaded!")
+    warning("local_loaddomains: nothing has been loaded!")
     return(tibble())
   }
 }
 ```
 
 ```{r function/structure feature annotate}
-tsv_path = paste0(wd, "/../IDEA_data/05.annotations/tsv/")
-res_path = paste0(wd, "/../IDEA_data/05.annotations/fasta/")
+tsv_path = WhereAmI("01.DATA/01.ASinLung/06.function_annotation/0809/tsv/")
 tsv_files = Sys.glob(paste0(tsv_path, "*tsv*"))
 all_domain_info_tbl = local_loadDomains(tsv_files)
 
@@ -531,7 +565,7 @@ txs_detail_tbl = txs_detail_tbl %>% dplyr::mutate(bioType = type2bio(`Transcript
 # add protein seq
 fasta_files = Sys.glob(paste0(res_path, "*.fasta"))
 txs_names = stringr::str_extract(fasta_files, pattern = "(?<=/)\\w+-\\d{3}(?=\\.fasta)")
-protein_seqs = mclapply(fasta_files, mc.cores = cores_to_use, function(x){
+protein_seqs = mclapply(fasta_files, mc.cores = opts$cores, function(x){
   read_tsv(x, col_types = "c") %>% as.character()
 }) %>% unlist()
 names(protein_seqs) = txs_names
@@ -694,8 +728,8 @@ events_tbl_toStore = enrichment_event_ann_tbl
 # export to table ----
 require(openxlsx)
 wb = EXWB.initiate()
-wb = EXWB.writeSheet(wb, "CD8_byClusters_allEvents", events_tbl_toStore, overwrite = T)
-# openxlsx::saveWorkbook(wb, file = paste0(WhereAmI("01.DATA/01.ASinLung/04.tables/"), "CD8_byClusters_allEvents_",format(x = Sys.time(), "%m%d"), ".xlsx"), overwrite = T)
+wb = EXWB.writeSheet(wb, "CD4_byClusters_allEvents", events_tbl_toStore, overwrite = T)
+# openxlsx::saveWorkbook(wb, file = paste0(WhereAmI("01.DATA/01.ASinLung/04.tables/"), "CD4_byClusters_allEvents_",format(x = Sys.time(), "%m%d"), ".xlsx"), overwrite = T)
 
 # clear trash ----
 rm(Tx1_details_tbl, Tx2_details_tbl, pfmChange_tbl, pfmChanges, events_tbl_toStore)
@@ -809,31 +843,32 @@ upset(event_class_df, order.by = "freq", sets.bar.color = my_cols, text.scale = 
 ```
 
 
-```{r biotype changes, fig.height=8, fig.width=8}
-enrichment_event_ann_txs2txs_tbl = enrichment_event_ann_txs2txs_tbl %>% filter(`Tx1-bioType` %in% c("protein_coding", "long_nc"), `Tx2-bioType` %in% c("protein_coding", "long_nc"))
+```{r biotype changes}
+require("ggalluvial")
+biotype_changes_tbl = enrichment_event_ann_txs2txs_tbl %>% group_by(`Change-bioType`, `Tx1-bioType`, `Tx2-bioType`) %>% summarise(counts = n())
+ggplot(data = biotype_changes_tbl, aes(axis1 = `Tx1-bioType`, axis2 = `Tx2-bioType`, y = counts)) +
+  geom_alluvium(aes(fill = `Change-bioType`)) +
+  geom_stratum() + geom_text(stat = "stratum", label.strata = TRUE) +
+  scale_x_discrete(limits = c("biotype of isoform 1", "biotype of isoform 2"), expand = c(.1, .05)) +
+  theme(legend.position = "top")
 
-t_chosen_genes = enrichment_event_ann_txs2txs_tbl$`Gene name` %>% unique()
-t_enrichment_filter_tbl = enrichment_filter_tbl %>% filter(gene_name %in% t_chosen_genes) %>% 
-  filter(!grepl(id, pattern = "MIX")) %>% 
-  mutate(bioType = txs_detail_tbl$bioType[match(id, txs_detail_tbl$`Transcript name`)])
-(t_enrichment_filter_tbl %>% dplyr::select(id, bioType) %>% distinct())$bioType %>% table()
-pGenes$Gene.type[match(t_chosen_genes, pGenes$gene_name)] %>% table()
+ids = 1:nrow(enrichment_event_ann_txs2txs_tbl)
+biotype_changes_lst = list(
+  `Isoform1-coding` = ids[enrichment_event_ann_txs2txs_tbl$`Tx1-bioType` == "protein_coding"], 
+  `Isoform1-noncoding` = ids[enrichment_event_ann_txs2txs_tbl$`Tx1-bioType` == "long_nc"],
+  `Isoform2-coding` = ids[enrichment_event_ann_txs2txs_tbl$`Tx2-bioType` == "protein_coding"],
+  `Isoform2-noncoding` = ids[enrichment_event_ann_txs2txs_tbl$`Tx2-bioType` == "long_nc"] 
+)
+sets_bar_cols = gg_color_hue(4)[c(2,4)] %>% rep(each = 2)
+main_bar_cols = gg_color_hue(2)[c(1,2,2,1,NA,NA,NA)]
 
-t_biotype_change_tbl = enrichment_event_ann_txs2txs_tbl %>%
-  group_by(`Tx1-bioType`, `Tx2-bioType`) %>% summarise(count = n()) %>% 
-  mutate(item = local_sortPairs(`Tx1-bioType`, `Tx2-bioType`,sep = "-")) %>% 
-  group_by(item) %>% summarise(count = sum(count))
+upset(fromList(biotype_changes_lst), text.scale = 2, 
+      sets = names(biotype_changes_lst), keep.order = T, order.by = "freq", 
+      sets.bar.color = sets_bar_cols, main.bar.color = main_bar_cols)
 
-t_biotype_change_tbl %>% 
-  ggplot() +
-  geom_col(aes(x = item, y = count), fill = "white", color = "black") +
-  geom_text(aes(x = item, y = count, label = count), vjust = -.4, size = 6) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(x = "", y = "Event count")
-  
 # export to table ----
-# wb = EXWB.writeSheet(wb, "biotypeChangingEvents",
-#                      enrichment_event_ann_txs2txs_tbl %>% dplyr::filter(`Change-bioType`), overwrite = T)
+wb = EXWB.writeSheet(wb, "biotypeChangingEvents",
+                     enrichment_event_ann_txs2txs_tbl %>% dplyr::filter(`Change-bioType`), overwrite = T)
 ```
 
 #### Describe events by the changes
@@ -978,174 +1013,165 @@ total_pie_tbl %>% dplyr::mutate(
 #                      overwrite = T)
 # wb = EXWB.writeSheet(wb, "Neither_sub&domains_changed", sheetData =
 #                        prot_seq_change_events_tbl %>% dplyr::filter(!`Change-subcellular` & !`Change-Pfam_domains`), overwrite = T)
-# openxlsx::saveWorkbook(wb, file = paste0(WhereAmI("01.DATA/01.ASinLung/04.tables/"), "CD8_byClusters_allEvents_",format(x = Sys.time(), "%m%d"), ".xlsx"), overwrite = T)
+# openxlsx::saveWorkbook(wb, file = paste0(WhereAmI("01.DATA/01.ASinLung/04.tables/"), "CD4_byClusters_allEvents_",format(x = Sys.time(), "%m%d"), ".xlsx"), overwrite = T)
 ```
 
-#### Calculate genes by event types
 ```{r}
-genes_withDEisotypes = (enrichment_event_ann_txs2txs_tbl %>% filter(`Change-Transcription start site (TSS)`))$`Gene name` %>% unique
+prot_seq_pie_tbl = tibble(
+  item = c("Same protein", "Different protein"), 
+  amount = c(with(enr_coding_events_tbl, length(unique(`Gene name`[!`Change-prot_seq`]))), 
+             with(enr_coding_events_tbl, length(unique(`Gene name`[`Change-prot_seq`])))),
+  r0 = 0,
+  r = 1
+)
+prot_seq_pie_tbl = local_addpositionForpie(prot_seq_pie_tbl)
 
-genes_withBiotype = (enrichment_event_ann_txs2txs_tbl %>% filter(`Change-bioType`))$`Gene name` %>% unique 
+TSS_pie_tbl = tibble(
+  item = c("Same TSS", "Different TSS"),
+  amount = c(
+    with(enr_coding_events_tbl %>% dplyr::filter(!`Change-prot_seq`), length(unique(`Gene name`[!`Change-Transcription start site (TSS)`]))),
+    with(enr_coding_events_tbl %>% dplyr::filter(!`Change-prot_seq`), length(unique(`Gene name`[`Change-Transcription start site (TSS)`])))),
+  r0 = 1, 
+  r = 1.5
+)
 
-enr_coding_events_tbl = enrichment_event_ann_txs2txs_tbl %>% dplyr::filter(`Tx1-bioType` == "protein_coding" & `Tx2-bioType` == "protein_coding") 
+TSS_pie_tbl = local_addpositionForpie(
+  TSS_pie_tbl, 
+  arc_start = prot_seq_pie_tbl$start[with(prot_seq_pie_tbl, item == "Same protein")],
+  arc_end = prot_seq_pie_tbl$end[with(prot_seq_pie_tbl, item == "Same protein")]
+)
+total_pie_tbl = bind_rows(prot_seq_pie_tbl, TSS_pie_tbl)
 
-genes_samePropDiffTSS = (enr_coding_events_tbl %>% filter(!`Change-prot_seq`&`Change-Transcription start site (TSS)`))$`Gene name` %>% unique() 
 
-# genes_domainChange = enr_coding_events_tbl %>% filter(!(`Change-subcellular`)& `Change-Pfam_domains`) %>% with(`Gene name`) %>% unique()
-genes_domainChange = enr_coding_events_tbl %>% filter(`Change-Pfam_domains`) %>% with(`Gene name`) %>% unique()
-genes_subcellularChange = enr_coding_events_tbl %>% filter(`Change-subcellular`) %>% with(`Gene name`) %>% unique() 
+subcellular_pie_tbl = tibble(
+  item = c("Subcellular location changed", "Subcellular location unchanged"),
+  amount = c(
+    with(prot_seq_change_events_tbl, length(unique(`Gene name`[`Change-subcellular`]))),
+    with(prot_seq_change_events_tbl, length(unique(`Gene name`[!`Change-subcellular`])))),
+  r0 = 1.5, 
+  r = 2
+)
+subcellular_pie_tbl = local_addpositionForpie(
+  subcellular_pie_tbl, 
+  arc_start = prot_seq_pie_tbl$start[with(prot_seq_pie_tbl, item == "Different protein")],
+  arc_end = prot_seq_pie_tbl$end[with(prot_seq_pie_tbl, item == "Different protein")]
+)
+total_pie_tbl = bind_rows(total_pie_tbl, subcellular_pie_tbl)
 
-genes_otherChanges = genes_withDEisotypes %>% setdiff(genes_withBiotype) %>% setdiff(genes_samePropDiffTSS) %>% setdiff(genes_domainChange) %>% setdiff(genes_subcellularChange)
-```
+domain_pie_tbl = tibble(
+  item = c("Lack domain infos", "Domain changed", "Domain unchanged"),
+  amount = c(
+    with(prot_seq_change_events_tbl %>% dplyr::filter(`Change-subcellular`), length(unique(`Gene name`[is.na(`Change-Pfam_domains`)]))),
+    with(prot_seq_change_events_tbl %>% dplyr::filter(`Change-subcellular`), sum(!is.na(unique(`Gene name`[`Change-Pfam_domains`])))),
+    with(prot_seq_change_events_tbl %>% dplyr::filter(`Change-subcellular`), sum(!is.na(unique(`Gene name`[!`Change-Pfam_domains`]))))),
+  r0 = 2, 
+  r = 2.5
+)
+domain_pie_tbl = local_addpositionForpie(
+  domain_pie_tbl,
+  arc_start = total_pie_tbl$start[with(total_pie_tbl, item == "Subcellular location changed")],
+  arc_end = total_pie_tbl$end[with(total_pie_tbl, item == "Subcellular location changed")]
+)
+total_pie_tbl = bind_rows(total_pie_tbl, domain_pie_tbl)
 
-##### GO for each category of DE isotypes
-```{r GO for each category of DE isotypes, fig.width=12, fig.height=6}
-require(enrichplot)
-require(clusterProfiler)
+domain_pie_tbl = tibble(
+  item = c("Lack domain infos", "Domain changed", "Domain unchanged"),
+  amount = c(
+    with(prot_seq_change_events_tbl %>% dplyr::filter(!`Change-subcellular`), length(unique(`Gene name`[is.na(`Change-Pfam_domains`)]))),
+    with(prot_seq_change_events_tbl %>% dplyr::filter(!`Change-subcellular`), sum(!is.na(unique(`Gene name`[`Change-Pfam_domains`])))),
+    with(prot_seq_change_events_tbl %>% dplyr::filter(!`Change-subcellular`), sum(!is.na(unique(`Gene name`[!`Change-Pfam_domains`]))))),
+  r0 = 2, 
+  r = 2.5
+)
+domain_pie_tbl = local_addpositionForpie(
+  domain_pie_tbl,
+  arc_start = total_pie_tbl$start[with(total_pie_tbl, item == "Subcellular location unchanged")],
+  arc_end = total_pie_tbl$end[with(total_pie_tbl, item == "Subcellular location unchanged")]
+)
+total_pie_tbl = bind_rows(total_pie_tbl, domain_pie_tbl)
 
-genes_withDEisotypes2GO_lst = setNames(list(genes_withBiotype, genes_samePropDiffTSS, genes_subcellularChange, genes_domainChange), c("Coding/non-coding shifts", "Same protein with alternative TSS", "Subcellular tranlocation", "Domain cassette"))
-
-ego_DEisotypes_lst = lapply(genes_withDEisotypes2GO_lst, function(x){
-  enrichGO(x %>% XXXToEntrez(), OrgDb = "org.Hs.eg.db", ont="BP", readable=TRUE)
-})
-
-# save(
-#   genes_withDEisotypes2GO_lst,
-#   ego_DEisotypes_lst,
-#   ego_DEisotypes_simplified_lst,
-#   XXXToEntrez,
-#   file = "/home/jason/Storage/tmp/eGenesDEisotypes.CD8.RDa"
-# )
-# load(file = "/home/jason/Storage/tmp/eGenesDEisotypes.CD8.RDa")
-# require(parallel)
-
-# ego_DEisotypes_simplified_lst = mclapply(ego_DEisotypes_lst, simplify, mc.cores = 4)
-
-pdf(file = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/03.graphs/04.publishable/GO.DEisotypes.CD8.pdf", width = 12, height = 6)
-
-topN = 10
-for(x in names(ego_DEisotypes_simplified_lst)){
-  y = as_tibble(ego_DEisotypes_simplified_lst[[x]])
-  idx = order(y$p.adjust) %>% head(topN)
-  y = y[idx, ]
-  y$Description = factor(y$Description, levels = y$Description[order(y$p.adjust, decreasing = T)])
-  print(
-    y %>% 
-      ggplot(aes(x = Description, y = -log10(p.adjust))) + 
-      geom_col(fill = "red", width = 0.6) + 
-      labs(title = x, x = NULL, y = "-log10(adjusted p value)") + 
-      coord_flip() + 
-      geom_text(aes(label = round(..y.., 2)), hjust = -0.4, size = 6) + 
-      scale_y_continuous(position = "right", expand = expand_scale(mult = c(0, .5))) + 
-      theme_classic(base_size = 24, base_family = "Arial") +
-      theme(axis.ticks.y = element_blank(), axis.line.y = element_blank())
+# detailed legend 
+total_pie_tbl$item = factor(
+  total_pie_tbl$item,
+  levels = c(
+    "Protein:", 
+    total_pie_tbl$item %>% grep(pattern = "protein", value = T),
+    "TSS:",
+    total_pie_tbl$item %>% grep(pattern = "TSS", value = T),
+    "Subcellular:",
+    total_pie_tbl$item %>% grep(pattern = "Subcellular", value = T),
+    "Domain:",
+    unique(total_pie_tbl$item %>% grep(pattern = "domain", ignore.case = T, value = T))
   )
-}
+)
+my_cols = gg_color_hue(total_pie_tbl$item %>% unique() %>% length())
 
-dev.off()
-# emapplot(ego_DEisotypes_simplified_lst$`Coding/non-coding shifts`)
+total_pie_tbl %>% dplyr::mutate(
+  middle_theta = start + (end - start)/2,
+  middle_raddi = r0 + (r-r0)/2,
+  label_x = middle_raddi * sin(middle_theta),
+  label_y = middle_raddi * cos(middle_theta), 
+) %>% 
+  ggplot() + coord_fixed() + theme_no_axes(base.theme = theme_bw(base_size = 18)) +
+  geom_arc_bar(
+    aes(x0 = 0, y0 = 0, r0 = r0, r = r,
+        start = start, end = end, fill = item),
+    color = "white"
+  ) + 
+  scale_fill_manual(
+    values=c("white", my_cols[1:2], 
+             "white", my_cols[3:4], 
+             "white", my_cols[5:6],
+             "white", my_cols[7:9]), drop=FALSE) +
+  geom_text(aes(x = label_x, y = label_y, label = ifelse(amount > 5, amount, ""))) +
+  theme(legend.title = element_blank(), 
+        title = element_text(size = 15)) +
+  labs(title = "Classification isoform-isoform coding events: count by genes")
 ```
-
-```{r detail categories under each category}
-
-# How exactly did subcellular location changed
-t_subcellular_tbl = prot_seq_change_events_tbl %>% select(matches("subcellular")) %>% arrange(`Tx1-subcellular`)
-t_subcellular_tbl = t_subcellular_tbl[, -1]
-t_subcellulars = t_subcellular_tbl$`Tx1-subcellular` %>% unique() %>% sort()
-t_order1 = match(t_subcellular_tbl$`Tx1-subcellular`, t_subcellulars)
-t_order2 = match(t_subcellular_tbl$`Tx2-subcellular`, t_subcellulars)
-t_change_idx = t_order2 < t_order1
-t_subcellular_location = t_subcellular_tbl[t_change_idx, ]$`Tx1-subcellular`
-t_subcellular_tbl[t_change_idx, ]$`Tx1-subcellular` = t_subcellular_tbl[t_change_idx, ]$`Tx2-subcellular`
-t_subcellular_tbl[t_change_idx, ]$`Tx2-subcellular` = t_subcellular_location
-
-
-t_gtbl = t_subcellular_tbl %>% group_by(`Tx1-subcellular`, `Tx2-subcellular`) %>%
-  summarise(count = n()) %>%
-  as_tbl_graph()
-t_gtbl %>% ggraph(layout = "kk") +
-  geom_edge_loop(aes(label = count, color = count), angle_calc = "along",
-    label_dodge = unit(2.5, 'mm')) +
-  geom_edge_link(
-    aes(label = count, color = count),
-    angle_calc = 'along',
-    label_dodge = unit(2.5, 'mm'),
-  )+
-  geom_node_label(aes(label = name), size = 8) +
-  theme_no_axes(theme_bw(base_size = 20)) +
-  coord_cartesian(xlim = c(-1,1.5))
-
-# domain change statistic 
-t_domain_tbl = prot_seq_change_events_tbl %>% filter(`Change-Pfam_domains`)
-```
-
 To relate all these events with functions, I have to link them to their potential functional changes and see if they can reveal something new in C1-C2-C3(as control) and C1-C6(as negative control) and C3-C4-C6 vs C5-C6 (to find new insights)
 
 #### Describe change events by which clusters they expand
-```{r across genes, fig.width=8, fig.height=8}
+```{r across genes, fig.width=8, fig.height=6}
 require(ggraph)
 require(tidygraph)
 
+# event counts for all  
+eventCounts_byClusters_tbl = enrichment_event_ann_tbl %>% 
+  dplyr::mutate(col_pairs = local_sortPairs(Cluster1, Cluster2)) %>% 
+  group_by(col_pairs) %>% summarise(event_count = n()) %>% 
+  tidyr::separate(col = col_pairs, c("Cluster1", "Cluster2"), sep = ":")
+
+eventCounts_gtbl = eventCounts_byClusters_tbl %>% as_tbl_graph(directed = F)
+
+ggraph(eventCounts_gtbl, layout = "linear", circular = T) +
+  geom_edge_link(aes(label = event_count, color = event_count), angle_calc = "along", label_dodge = unit(2.5, 'mm')) +
+  ggraph::scale_edge_color_gradient(low = "white", high = "red") +
+  geom_node_label(aes(label = name)) + 
+  theme_void() +
+  coord_fixed(xlim = c(-1.5,1.5)) +
+  theme(legend.position = "bottom") +
+  labs(title = "# of change events between clusters")
+rm(eventCounts_byClusters_tbl, eventCounts_gtbl)
+
 # gene counts for all 
-geneCounts_byClusters_tbl = enrichment_event_ann_txs2txs_tbl %>% 
+geneCounts_byClusters_tbl = enrichment_event_ann_tbl %>% 
   dplyr::mutate(col_pairs = local_sortPairs(Cluster1, Cluster2)) %>% 
   group_by(col_pairs) %>% summarise(gene_count = length(unique(`Gene name`))) %>% 
   tidyr::separate(col = col_pairs, c("Cluster1", "Cluster2"), sep = ":")
 
 geneCounts_gtbl = geneCounts_byClusters_tbl %>% as_tbl_graph(directed = F)
 
-p_graph = ggraph(geneCounts_gtbl, layout = "kk") +
-  geom_edge_link(aes(label = gene_count, color = gene_count), angle_calc = "along", label_dodge = unit(2.5, 'mm'), ) +
-  ggraph::scale_edge_color_gradient(name = "Gene count", low = "white", high = "red") +
+ggraph(geneCounts_gtbl, layout = "linear", circular = T) +
+  geom_edge_link(aes(label = gene_count, color = gene_count), angle_calc = "along", label_dodge = unit(2.5, 'mm')) +
+  ggraph::scale_edge_color_gradient(low = "white", high = "red") +
   geom_node_label(aes(label = name)) + 
   theme_void() +
-  coord_fixed(xlim = c(-3,3)) +
+  coord_fixed(xlim = c(-1.5,1.5)) +
   theme(legend.position = "bottom") +
   theme(legend.position = "bottom") +
-  labs(title = "")
+  labs(title = "# of change genes between clusters")
 
-p_graph
-# ggsave(plot = p_graph, device = "pdf", filename = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/03.graphs/04.publishable/Fig3_C6_DEisotypes.pdf", width = 8, height = 8)
-# rm(geneCounts_byClusters_tbl, geneCounts_gtbl)
-
-```
-
-<!-- another attempt -->
-<!-- ```{r} -->
-<!-- library(igraph) -->
-<!-- library(tcltk) -->
-
-<!-- # net.filter <- graph_from_data_frame(d = geneCounts_byClusters_tbl, directed = F) -->
-<!-- # lay <- layout_with_fr(net.filter) -->
-<!-- # lay <- norm_coords(lay, ymin = -1, ymax = 1, xmin = -1, xmax = 1) -->
-<!-- net <- graph_from_data_frame(d = geneCounts_byClusters_tbl, directed = F) -->
-<!-- tkplot(net,  -->
-<!--        edge.arrow.size = .4,  -->
-<!--        vertex.label = V(net)$id,  -->
-<!--        edge.curved = .2, -->
-<!--        vertex.label.font = 1, -->
-<!--        rescale = F,  -->
-<!--        layout = lay, -->
-<!--        vertex.label.cex = 1, -->
-<!--        vertex.frame.color = "white") -->
-<!-- ``` -->
-
-#### simple counts for each cluster
-```{r}
-chosen_clusters = union(enrichment_event_ann_txs2txs_tbl$Cluster1 %>% unique(), enrichment_event_ann_txs2txs_tbl$Cluster2 %>% unique()) %>% sort()
-
-p_isoTypes = lapply(chosen_clusters, function(x){
-  with(enrichment_event_ann_txs2txs_tbl, `Gene name`[Cluster1 == x | Cluster2 == x] %>% unique() %>% length())
-}) %>% unlist() %>% setNames(nm = chosen_clusters) %>% enframe() %>% 
-  ggplot(aes(x = name, y = value)) +
-  geom_col(width = 0.8, fill = "white", color = "black") +
-  geom_text(aes(label = ..y..), vjust = -0.4, size = 5) +
-  labs(x = NULL, y = "nGenes with differential isotypes") +
-  scale_y_continuous(expand = expand_scale(mult = c(0, 0.2))) +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1))
-
-p_isoTypes
-# ggsave(plot = p_isoTypes, filename = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/03.graphs/04.publishable/Fig3_isotypeCounts.pdf", device = pdf, )
+rm(geneCounts_byClusters_tbl, geneCounts_gtbl)
 
 ```
 
@@ -1154,7 +1180,7 @@ After seeing this whole picture, let's focus on real biological question ...
 ## how exactly this change events would reveal the functional differences between clusters
 ### cluster comparison
 ```{r cluster pairs comparison}
-chosen_clusters = c( "CD8_C6-LAYN")
+chosen_clusters = c( "CD4_C6-LAYN")
 # event_changes_tbl = enrichment_event_ann_txs2txs_tbl %>%
 #   dplyr::filter(Cluster1 %in% chosen_clusters , Cluster2 %in% chosen_clusters) %>%
 #   dplyr::mutate(cluster_pairs = local_sortPairs(Cluster1, Cluster2)) %>%
@@ -1222,115 +1248,491 @@ ggplot(plt_alluvium_tbl,
 ```
 
 
+<!-- construction site --> 
 --- inspector for each chosen genes
+### Define plotting function
+```{r plot function}
+# plot protein domains ----
+draw_mainChain <- function(data = data,
+                           size = 0.5,
+                           label_size = 4,
+                           margin = 0.1,
+                           ...) {
+  labels = unique(data$entryName)[order(unique(data$order))]
+  p <- ggplot2::ggplot(data = data) + 
+    ggplot2::geom_rect(mapping=ggplot2::aes(xmin=1,
+                                            xmax=total_length, 
+                                            ymin=order-margin, 
+                                            ymax=order+margin), 
+                       ...) +
+    ggplot2::scale_y_continuous(breaks = 1:length(labels), 
+                                labels = labels)
+  
+  p <- p + ggplot2::labs(x = "Amino acid number") # label x-axis
+  p <- p + ggplot2::labs(y = "") # label y-axis
+  
+  p <- p +
+    ggplot2::theme(
+      axis.line.y = element_blank(),
+      axis.ticks.y = element_blank())
+  
+  return(p)
+}
+draw_substructure <- function(p,
+                         data = data,
+                         label_size = 4, 
+                         margin = .1,
+                         ...){
+  begin=end=description=NULL
+  p <- p + ggplot2::geom_rect(data= data[data$type == "substructure",],
+                              mapping=ggplot2::aes(xmin=begin,
+                                                   xmax=end,
+                                                   ymin=order-margin,
+                                                   ymax=order+margin,
+                                                   fill=item), ...)
+  return(p)
+}
+draw_domains <- function(p,
+                        data = data,
+                        label_domains = TRUE,
+                        label_size = 4, 
+                        margin = .25,
+                        ...){
+    begin=end=description=NULL
+    p <- p + ggplot2::geom_rect(data= data[data$type == "DOMAIN",],
+            mapping=ggplot2::aes(xmin=begin,
+                        xmax=end,
+                        ymin=order-margin,
+                        ymax=order+margin,
+                        fill=description), ...)
 
-# Check single gene
+    if(label_domains == TRUE){
+        p <- p + ggplot2::geom_label(data = data[data$type == "DOMAIN", ],
+                        ggplot2::aes(x = begin + (end-begin)/2,
+                            y = order,
+                            label = description),
+                            size = label_size)
+    }
+    return(p)
+}
+
+# a wrapper for simple plots of txs 
+local_drawProteinStructure = function(t_domain_info_tbl){
+  # hard coded plotting
+  if(!nrow(t_domain_info_tbl)){
+    return(ggplot())
+  }
+  # data preparation
+  t_domain_info_tbl_pfam = t_domain_info_tbl %>% dplyr::filter(database %in% c("Pfam", "TMHMM", "SignalP_EUK")) %>%
+    dplyr::mutate(type = ifelse(database == "Pfam", "DOMAIN", "substructure"))
+  
+  # make plot
+  p = draw_mainChain(t_domain_info_tbl_pfam, fill = "grey")
+  p = draw_substructure(p, t_domain_info_tbl_pfam)
+  p = draw_domains(p, t_domain_info_tbl_pfam, label_domains = F, color = "white", alpha = .8, margin = .2) + 
+    theme(legend.direction = "vertical", legend.position = "bottom")
+  return(p)
+}
+
+# 
+local_splitExon = function(x, UTR_start, UTR_end){
+  # x being a row of tbl
+  breakpoints = table(sort(c(x$chunk_start, x$chunk_end, UTR_start, UTR_end)))
+  middle = (names(breakpoints) %>% as.numeric() %>% sort())[2]
+  common_end = which(breakpoints>1) %>% names() %>% as.numeric()
+  x = x[c(1,1), ]
+  x$chunk_start[2] = UTR_start
+  x$chunk_end[2] = UTR_end
+  x$chunk_coding_type[2] = F
+  if(x$chunk_start[1] == common_end){ # row 1 has to be the longer one
+    x$chunk_start[1] = middle
+  } else {
+    x$chunk_end[1] = middle
+  }
+  return(x)
+}
+# plot transcript structure ----
+local_drawTranscriptStrucutre = function(exon_info_tbl,
+                                         margin_MC = .05,
+                                         margin_EXON = .1) {
+  if(!nrow(exon_info_tbl)){
+    return(ggplot())
+  }
+  
+  # data preparation
+  tx_coding_tbl = exon_info_tbl %>% dplyr::select(`Transcript name`, bioType) %>% distinct()
+  tx_coding_type = tx_coding_tbl$bioType == "protein_coding" 
+  names(tx_coding_type) = tx_coding_tbl$`Transcript name`
+  exon_info_tbl = exon_info_tbl %>% dplyr::mutate(
+    order = as.numeric(as.factor(`Transcript name`)), 
+    tx_coding_type = as.logical(tx_coding_type[match(`Transcript name`, names(tx_coding_type))]),
+    chunk_start = `Exon region start (bp)`, 
+    chunk_end = `Exon region end (bp)`,
+    chunk_coding_type = tx_coding_type
+  )
+  if(unique(exon_info_tbl$Strand) < 0) {
+    labels = paste0("< ",
+      unique(exon_info_tbl$`Transcript name`)[order(unique(exon_info_tbl$order))])
+  } else {
+    labels = paste0("> ",
+      unique(exon_info_tbl$`Transcript name`)[order(unique(exon_info_tbl$order))])
+  }
+  
+  # add existed UTR
+  chunk_change_codingtype = with(exon_info_tbl, `5' UTR start` == chunk_start & `5' UTR end` == chunk_end) | with(exon_info_tbl, `3' UTR start` == chunk_start & `3' UTR end` == chunk_end)
+  exon_info_tbl$chunk_coding_type[chunk_change_codingtype] = F
+  # modification for chunk plots
+  t_UTR_ridx = (!is.na(exon_info_tbl$`5' UTR start`)) | (!is.na(exon_info_tbl$`3' UTR start`))
+  UTR_info_tbl = exon_info_tbl[t_UTR_ridx, ] # extract every row that UTRs are not NA
+  
+  # split exon ----
+  t_UTR_rec_tbl = tibble()
+  for(i in 1:nrow(UTR_info_tbl)){
+    t_UTR_info_row = UTR_info_tbl[i, ]
+    
+    
+    # if 5' exists
+    if(!is.na(t_UTR_info_row$`5' UTR end`)){
+      UTR_start = t_UTR_info_row$`5' UTR start`
+      UTR_end = t_UTR_info_row$`5' UTR end`
+      if(!((t_UTR_info_row$chunk_end - t_UTR_info_row$chunk_start) == (UTR_end - UTR_start))){
+        t_UTR_info_row = local_splitExon(t_UTR_info_row, UTR_start, UTR_end)
+      }
+    } 
+    
+    # if 3' exists
+    if(!is.na(t_UTR_info_row[1, ]$`3' UTR end`)){
+      UTR_start = t_UTR_info_row[1, ]$`3' UTR start`
+      UTR_end = t_UTR_info_row[1, ]$`3' UTR end`
+      if(!((t_UTR_info_row[1, ]$chunk_end - t_UTR_info_row[1, ]$chunk_start) == (UTR_end - UTR_start))){
+        t_UTR_info_row = bind_rows(
+          t_UTR_info_row[-1, ],
+          local_splitExon(t_UTR_info_row[1, ], UTR_start, UTR_end)
+        )
+      }
+    } 
+    
+    t_UTR_rec_tbl = bind_rows(t_UTR_rec_tbl, t_UTR_info_row)
+  }
+  
+  exon_info_tbl = bind_rows(
+    exon_info_tbl[!t_UTR_ridx, ], 
+    t_UTR_rec_tbl)
+  
+  
+  # draw main chain ----
+  p <- ggplot(data = exon_info_tbl) + 
+    geom_rect(aes(
+      xmin = `Transcript start (bp)`,
+      xmax = `Transcript end (bp)`,
+      ymin = order - margin_MC,
+      ymax = order + margin_MC), 
+      alpha = .5, fill = "grey"
+    ) + 
+    scale_y_continuous(breaks = 1:length(labels), labels = labels) +
+    theme_classic(base_size = 16) +
+    coord_cartesian(ylim = c(.5 , length(labels) + .5)) +
+    theme(axis.line.y = element_blank(), 
+          axis.ticks.y = element_blank())
+  
+  # draw chunks ----
+  coding_colors = gg_color_hue(2) %>% sort()
+  p = 
+    p + 
+    geom_rect(aes(
+      xmin = chunk_start, 
+      xmax = chunk_end, 
+      ymin = order - margin_EXON, 
+      ymax = order + margin_EXON,
+      color = tx_coding_type, 
+      fill = chunk_coding_type)) +
+    scale_color_manual(labels = c("non-coding", "coding"), values = coding_colors, limits = c(F, T)) + 
+    scale_fill_manual(labels = c("non-coding", "coding"), values = c("white", coding_colors[2]), limits = c(F, T)) 
+  p = p + theme(legend.position = "bottom", legend.direction = "vertical")
+  return(p)
+}
+
+# wrapper for single gene ----
+local_plotGeneInspect = function(chosen_gene, annotation_path){
+  # plt for all txs in expressed clusters for this gene
+  # theme_set(theme_classic(base_size = 16))
+  expressed_cluster = rep(T, length(unique(pCells$characteristics..majorCluster)))
+  names(expressed_cluster) = sort(unique(pCells$characteristics..majorCluster))
+  chn_cells = pCells$title[pCells$characteristics..majorCluster %in% names(expressed_cluster)[expressed_cluster]]
+  
+  # plt1 for gene level expression ----
+  p1 = ggplot(exprMat_sum_tbl %>% dplyr::filter(Gene_name == chosen_gene, cluster %in% names(expressed_cluster[expressed_cluster]) ),  
+              aes(x = cluster, y = log(tpm + 1))) +
+  geom_violin(aes(fill = cluster)) +
+  geom_boxplot(width = 0.1, aes(color = cluster), fill = "white") +
+  labs(title = chosen_gene) +
+  theme(# axis.text.x = element_text(angle = 45, hjust = 1),
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank())
+  
+  chn_txs = rownames(usageMat) %>% grep(paste0("^", chosen_gene, "-\\d+"), ., value = T)
+  
+  # enrichment Fisher View ----
+  # counts matrix calculation 
+  obj = local_calculate_fishers(gene_name = chosen_gene, exprMat, usageMat, pCells)
+  chn_fishers = obj$fisher.p.adj
+  chn_fishers = chn_fishers[c(chn_txs, rownames(chn_fishers)[(nrow(chn_fishers) -
+  1):nrow(chn_fishers)]), names(expressed_cluster[expressed_cluster])]
+  canonical_tx = (obj$count %>% apply(1, sum) %>% sort(decreasing = T))[1] %>% names()
+  
+  # p3 = obj$count[c(chn_txs, paste0(chosen_gene, c("-NO_EXPR", "-MIX"))), names(expressed_cluster)[expressed_cluster]] %>% 
+  p3 = obj$count[c(chn_txs, paste0(chosen_gene, c("-MIX"))), names(expressed_cluster)[expressed_cluster]] %>% 
+    melt(varnames = c("id", "cluster"), value.name = "cell_count") %>% as_tibble() %>% dplyr::group_by(cluster) %>% dplyr::mutate(cluster_sum = sum(cell_count)) %>% 
+    dplyr::mutate(`ratio of cluster` = cell_count/cluster_sum) %>% 
+    ggplot(aes(x = cluster, y = id)) +
+    # chn_tx_clust_usage_tbl %>% ggplot(aes(x = cluster, y = id)) +
+  geom_tile(aes(fill = `ratio of cluster`), color = "white") +
+  geom_text(aes(label = `cell_count`)) +
+  scale_fill_gradient(low = "white") +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.line = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank()
+  )
+  
+  p4 = chn_fishers %>% melt(varnames = c("id", "cluster"), value.name = "-log10(fisher.p.adj)") %>% 
+    dplyr::filter(!grepl(id, pattern = "NO_EXPR")) %>% 
+    ggplot(aes(x = cluster, y = id)) +
+  geom_tile(aes(fill = `-log10(fisher.p.adj)`), color = "white") +
+  geom_text(aes(label = `-log10(fisher.p.adj)`)) +
+    scale_fill_gradient2(low = "white", mid = "white", high = "red", midpoint = 1, limits = c(0, 2), breaks = c(0, 1, 1.3, 2), na.value = "red") +
+    theme(
+      axis.text.x = element_blank(),
+      axis.line = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank()
+    )
+  
+  # transcript view ----
+  chn_txs = enrichment_event_ann_tbl %>% dplyr::filter(`Gene name` == chosen_gene) %>% dplyr::select(matches("C[1|2]")) %>% unlist() %>% unique()
+  chn_txs = base::union(chn_txs, canonical_tx)
+  test_struct_tbl = STRUCT.INFO %>% dplyr::filter(`Transcript name` %in% chn_txs) %>% dplyr::mutate(bioType = type2bio(GENE.INFO$`Transcript type`[match(`Transcript name`, GENE.INFO$`Transcript name`)]))
+  p6 = local_drawTranscriptStrucutre(test_struct_tbl)
+  p6 = p6 + theme(legend.position = "right", axis.text.x = element_text(angle = 45, hjust = 1))
+  # protein view ----
+  annotation_tsvs = paste0(annotation_path, chn_txs, ".fasta.tsv.txt")
+  t_domain_info_tbl = local_loadDomains(annotation_tsvs)
+  if(nrow(t_domain_info_tbl)){
+    t_domain_info_tbl = t_domain_info_tbl %>% dplyr::mutate(entryName = `Transcript name`)
+    p5 = local_drawProteinStructure(t_domain_info_tbl) 
+    p5 = p5 + theme(legend.position = "right")
+  } else{
+    p5 = ggplot()
+  }
+  
+  # plot ----
+  require(patchwork)
+  total = p1 + p4 + p3 + p6 + p5 + patchwork::plot_layout(ncol = 1)
+  return(total)
+}
+# total
+```
+
+
+### Check single gene
 ```{r inspect single gene, fig.height=14, fig.width=10}
-theme_set(theme_classic(base_size = 20))
-chosen_gene = "CD8A"
-total = f_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
+chosen_gene = "PRF1"
+total = local_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
 total
 
 ```
 
 ### chosen genes batch outputs
-```{r batch chosen gene inspector, include=FALSE, fig.height=12, fig.width=10}
-chosen_genes = c(
-  "PTPRC",
-  "CD8A",
-  "HAPLN3",
-  "PRDM1",
-  "CCR6",
-  "BTLA"
-)
+
+```{r batch chosen gene inspector, include=FALSE}
+chosen_genes = 
+  c()
+out_dir = WhereAmI("01.DATA/01.ASinLung/03.graphs/02.GeneInspector/CD4_chosenGs/")
 
 err_list = c()
-plt_list = list()
 for(i in 1:length(chosen_genes)){
   tryCatch({
   chosen_gene = chosen_genes[i]
-  total = f_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
+  total = local_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
   if(any(is.na(total))) {
     next
   }
-  # ggsave(filename = paste0(i, ".", chosen_gene, ".png"), plot = total, device = "png", path = out_dir, width = 10, height = 14)
-  plt_list[[chosen_gene]] = total
+  ggsave(filename = paste0(i, ".", chosen_gene, ".png"), plot = total, device = "png", path = out_dir, width = 10, height = 14)
   loginfo(chosen_gene, " done!")
   }, error = function(e) {err_list = c(err_list, chosen_gene)})
 }
 print(err_list)
-
-print(plt_list)
-
-out_dir = paste0(
-    WhereAmI("01.DATA/01.ASinLung/03.graphs/04.publishable/"), "publishGenes_",
-    format(x = Sys.time(), "%m%d"), ".pdf")
-
-pdf(file = out_dir, title = chosen_gene, width = 10, height = 14)
-
-# msgASAP(ttl = "Graphs_output_Done")
-
-dev.off()
+msgASAP(ttl = "Graphs_output_Done")
 
 ```
 
 
-```{r GO plots, fig.width=10, fig.height=8}
+
+```{r GO plots, fig.width=10, fig.height=7}
 library(enrichplot)
 library(clusterProfiler)
  
-# check CD8 enrichment changing genes GO BP enrichment
-ego = enrichGO(enrichment_event_ann_tbl$`Gene name` %>% unique() %>% XXXToEntrez(), OrgDb = "org.Hs.eg.db", ont="BP", readable=TRUE)
+ego = enrichGO(enr_generally_genes %>% XXXToEntrez(), OrgDb = "org.Hs.eg.db", ont="BP", readable=TRUE)
 # goplot(ego)
 # remove redundant GO terms
 ego2 = clusterProfiler::simplify(ego)
-
-# plot ----
 barplot(ego2, showCategory=20)
-cnetplot(ego2, showCategory = 5)
+cnetplot(ego2)
 emapplot(ego2)
 ```
 
+
 ## isoform usage distribution
-```{r, fig.width=8, fig.height=6}
-theme_set(theme_classic(base_size = 18, base_family = ""))
-require(ggridges)
+```{r}
 t_idx_id = sample(1:nrow(usageMat), round(nrow(usageMat) * 0.1, 0))
 t_cell = sample(1:ncol(usageMat), round(ncol(usageMat) * 0.1, 0))
 usage_tbl = usageMat[t_idx_id, t_cell] %>% melt(varnames = c("tx_id", "cell_id"), value.name = "usage") %>% as_tibble() %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)])
-p_usage = usage_tbl %>% dplyr::filter(usage > 0) %>% 
-  ggplot()+
-  # geom_density_ridges2(aes(x = usage, y = cluster, fill = cluster))
-  geom_histogram(aes(x = usage, fill = cluster), bins = 50) +
-  facet_wrap(~cluster) +
-  scale_y_log10(
-    breaks = scales::trans_breaks("log10", function(x) 10^x),
-    labels = scales::trans_format("log10", scales::math_format(10^.x))
-  ) +
-  theme_classic(base_size = 18) +
-  theme(legend.position = "none") 
-p_usage
-
-# pdf(file = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/03.graphs/04.publishable/FigSupp_isoformUsageDistribution.pdf", width = 8, height = 6)
-# p_usage
-# dev.off()
-
-expr_tbl = exprMat[1, ] %>%
-  as.matrix() %>% t() %>%
+usage_tbl %>% dplyr::filter(usage > 0) %>% ggplot()+
+  geom_density_ridges2(aes(x = usage, y = cluster, fill = cluster))
+expr_tbl = exprMat[1, ] %>% 
+  as.matrix() %>% t() %>% 
   melt(varnames = c("tx_id", "cell_id"), value.name = "expr") %>% as_tibble() %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)])
-p_geneExpr = expr_tbl %>% ggplot()+
+expr_tbl %>% ggplot()+
   geom_density_ridges2(aes(x = log10(expr+1), y = cluster, fill = cluster))
 
-expr_tbl = exprMat[t_idx_id, t_cell] %>%
+expr_tbl = exprMat[t_idx_id, t_cell] %>% 
   melt(varnames = c("tx_id", "cell_id"), value.name = "expr") %>% as_tibble() %>% dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)])
-p_isoExpr = expr_tbl %>% dplyr::filter(expr>0) %>% ggplot()+
+expr_tbl %>% dplyr::filter(expr>0) %>% ggplot()+
   geom_density_ridges2(aes(x = log10(expr+1), y = cluster, fill = cluster))
-
-p_geneExpr+ theme(legend.position = "none")
-p_isoExpr+ theme(legend.position = "none")
 
 rm(t_idx_id, t_cell, usage_tbl, expr_tbl)
 invisible(gc())
+```
+
+# New gene inspector 
+add "by"
+```{r new plot function}
+# wrapper for single gene ----
+f_plotGeneInspect = function(gene_name,
+                             chosen_txs = NULL,
+                             by = "cluster", 
+                             chosen_cats = NULL,
+                             annotation_path = tsv_path, 
+                             text_size = 18, 
+                             return_data = F) {
+  
+  ## Plot expression, enrichment, raw count and transcript/protein expression
+  ## 
+  ## Args:
+  #'  @gene_name: Target gene
+  #'  @chosen_txs: Which txs should be plot
+  #'  @by: "cluster" or "tissue" to plot by
+  #'  @chosen_cats: Which cluster should be plot
+  #'  @text_size: The size of text, default by 18.
+  #'  
+  #'  Returns: 
+  #'  A ggplot item with combined plot for the chosen gene. 
+  
+  # set basic theme
+  theme_set(theme_classic(base_size = text_size))
+  
+  if(by == "cluster") {
+    expressed_cat = rep(T, length(unique(pCells$characteristics..majorCluster)))
+    names(expressed_cat) = sort(unique(pCells$characteristics..majorCluster))
+    obj = all_obj_lst[[gene_name]]
+  } else {
+    expressed_cat = rep(T, length(unique(pCells$characteristics..tissueType)))
+    names(expressed_cat) = sort(unique(pCells$characteristics..tissueType))
+    obj = all_obj_lst_byTissue[[gene_name]]
+  }
+  
+  if(is.null(chosen_cats)){
+    chosen_cats = names(expressed_cat[expressed_cat])
+  }
+    
+  
+  # choose only meaningful txs to plot structure
+  chn_fishers = obj$fisher.p.adj
+  canonical_tx = (obj$count[grep(rownames(obj$count), pattern = "NO_EXPR", invert = T, value = T), ] %>% apply(1, sum) %>% sort(decreasing = T))[1] %>% names() 
+  txsForStructures = apply(obj$fisher.p.adj, 1, function(x){sum(x>1.3) > 0})
+  txsForStructures = names(txsForStructures)[txsForStructures]
+  txsForStructures = c(txsForStructures, canonical_tx)
+  txsForStructures = txsForStructures %>% grep(pattern = "NO_EXPR|MIX", value = T, invert = T)
+  # choose txs, by default use the arguments
+  if(is.null(chosen_txs)){
+    chn_txs = rownames(chn_fishers)[chn_fishers %>% apply(1, function(x){sum(x>1.3)}) > 0] %>% grep(pattern = "NO_EXPR", invert = T, value = T)
+  } else {
+    chn_txs = chosen_txs
+  }
+  
+  # plt1 for gene level expression ----
+  p1 = exprMat_sum_tbl %>% dplyr::filter(Gene_name == gene_name) %>% dplyr::filter_(.dots = paste0(by, "%in% chosen_cats")) %>% 
+    ggplot(aes_string(x = by, y = "log2(tpm+1)", color = by)) +
+    geom_bar(stat = "summary", fun.y = mean, fill = "white", size = 1.2) +
+    geom_errorbar(stat = "summary", fun.y = mean, fun.ymin = function(x){mean(x) - sd(x)}, fun.ymax = function(x){mean(x) + sd(x)}, width = .4, size = 1.2) +
+    # geom_boxplot(width = 0.1, aes_string(color = by), fill = "white") +
+    labs(title = gene_name) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "none",
+      # axis.text.x = element_blank(),
+      axis.title.x = element_blank())
+  
+  # count View ----
+  p3 = obj$count[chn_txs, chosen_cats] %>%
+    melt(varnames = c("id", "category"), value.name = "cell_count") %>% as_tibble() %>% 
+    dplyr::group_by(category) %>% 
+    # dplyr::mutate(category_sum = sum(cell_count)) %>%
+    # dplyr::mutate(`ratio of category` = cell_count / category_sum) %>%
+    ggplot(aes(x = category, y = id)) +
+    # chn_tx_clust_usage_tbl %>% ggplot(aes(x = cluster, y = id)) +
+    geom_tile(aes(fill = `cell_count`), color = "white") +
+    geom_text(aes(label = `cell_count`)) +
+    scale_fill_gradient(low = "white") +
+    labs(fill = "cell count") +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.line = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank()
+    )
+  
+  # enrichment Fisher View ----
+  p4 = chn_fishers[chn_txs, chosen_cats] %>% melt(varnames = c("id", "category"), value.name = "-log10(fisher.p.adj)") %>% 
+    ggplot(aes(x = category, y = id)) +
+    geom_tile(aes(fill = `-log10(fisher.p.adj)`), color = "white") +
+    geom_text(aes(label = `-log10(fisher.p.adj)`)) +
+    # scale_fill_gradient2(low = "white", mid = "white", high = "red", midpoint = 1, limits = c(0, 2), breaks = c(0, 1, 1.3, 2), na.value = "red") +
+    scale_fill_gradient(low = "white", high = "red", limits = c(0, 1.3), na.value = "red") +
+    labs(fill = "-log10(q value)") +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.line = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank()
+    )
+  
+  # transcript view ----
+  test_struct_tbl = STRUCT.INFO %>% dplyr::filter(`Transcript name` %in% txsForStructures) %>% dplyr::mutate(bioType = type2bio(GENE.INFO$`Transcript type`[match(`Transcript name`, GENE.INFO$`Transcript name`)]))
+  p6 = local_drawTranscriptStrucutre(test_struct_tbl)
+  p6 = p6 + theme(legend.position = "right", axis.text.x = element_text(angle = 45, hjust = 1))
+  # protein view ----
+  annotation_tsvs = paste0(annotation_path, txsForStructures, ".fasta.tsv.txt")
+  t_domain_info_tbl = local_loadDomains(annotation_tsvs)
+  if(nrow(t_domain_info_tbl)){
+    t_domain_info_tbl = t_domain_info_tbl %>% dplyr::mutate(entryName = `Transcript name`)
+    p5 = local_drawProteinStructure(t_domain_info_tbl) 
+    p5 = p5 + theme(legend.position = "right")
+  } else{
+    p5 = ggplot()
+  }
+  
+  
+  # plot ----
+  require(patchwork)
+  total = p1 + p3 + p4 + p6 + p5 + patchwork::plot_layout(ncol = 1)
+  if(return_data){
+    return(list(plot = total, count = obj$count[chn_txs, chosen_cats]))
+  }
+  return(total)
+}
+# total
 ```
 
 ## Separate tmp plots
@@ -1350,197 +1752,49 @@ p5 = p5 + theme(legend.position = "right")
 p5
 ```
 
-## calc exhaustion rate
-```{r}
-CD8cells_exhaustionGenes = read_tsv("/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/00.tmp/CD8exhaustionDEGs.txt", col_names = F)$X1
-# CD4cells_exhaustionGenes = read_tsv("/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/00.tmp/CD4exhaustionDEGs.txt", col_names = F)$X1
-
-chosen_idx = rownames(exprMat_sum) %in% CD8cells_exhaustionGenes
-t_exhaustion_scores = apply(exprMat_sum[chosen_idx, ], 2, function(x){
-  mean(log2(x+1))
-})
-
-t_cellgroups = pCells$characteristics..majorCluster[match(names(t_exhaustion_scores), pCells$title)]
-names(t_cellgroups) = names(t_exhaustion_scores)
-
-t_exhaustion_scores_byCluster = tapply(t_exhaustion_scores, INDEX = t_cellgroups, mean)
-
+## Check single gene for variable things
+```{r, fig.height=14, fig.width=10}
+chosen_gene = "RUNX3"
+total = f_plotGeneInspect(chosen_gene, annotation_path = "/data1/jason/data/01.ASinLung/tmp/tsv")
+# chosen_gene = "HAPLN3"
+# total = local_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
+total
 ```
+
+
 
 ## Check mean usage changes
-```{r, fig.height=12, fig.width=8}
-
-chosen_gene = "PTPRC"
-
-geneInspect_data = f_plotGeneInspect(chosen_gene, annotation_path = tsv_path, return_data = T)
-
+```{r}
+chosen_gene = "HAPLN3"
 t_usageMat = usageMat[grep(rownames(usageMat), pattern = paste0("^", chosen_gene, "-\\d{3}")),]
 t_usageMat_tbl = t_usageMat %>% melt(varnames = c("id", "cell_id"), value.name = "usage") %>% as_tibble() %>% 
-  dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)]) %>% 
-  mutate(exhaustion_score = t_exhaustion_scores[cell_id], 
-         mean_exhaustion_score = as.numeric(t_exhaustion_scores_byCluster[cluster]))
+  dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)])
 
-t_usageMat_tbl$id = as.character(t_usageMat_tbl$id)
 # MIX_cells = all_obj_lst[["HAPLN3"]]$cell_tags %>% grep(pattern = "MIX", value = T) %>% names()
-chn_clusters = t_usageMat_tbl$cluster %>% unique()
-chn_id = geneInspect_data$count %>% rownames() %>% grep(invert = T, pattern = "MIX", value = T) %>% sort()
-# chn_id = c("HAPLN3-201", "HAPLN3-202")
+chn_clusters = c("CD4_C1-LEF1", "CD4_C6-LAYN")
+chn_id = c("HAPLN3-201", "HAPLN3-202")
 
-p_meanUsage = t_usageMat_tbl %>% 
-  filter(id %in% chn_id) %>%
-  # mutate(id = ifelse(id == "HAPLN3-201", "HAPLN3-201", "Other HAPLN3 isoforms")) %>% 
-  dplyr::group_by(id, cluster, mean_exhaustion_score) %>% 
+t_usageMat_tbl %>% 
+  # filter(id %in% chn_id) %>%
+  mutate(id = ifelse(id == "HAPLN3-201", "HAPLN3-201", "Other HAPLN3 isoforms")) %>% 
+  dplyr::group_by(id, cluster) %>% 
   filter(cluster %in% chn_clusters) %>%
   summarise(mean = mean(usage), n = n(), sd = sd(usage), se = sd/sqrt(n)) %>% 
   ungroup() %>% group_by(id) %>% 
-  # ggplot(aes(x = cluster, y = mean, color = mean_exhaustion_score))+
-  ggplot(aes(x = cluster, y = mean, color = id, fill = id))+
-  # geom_bar(stat= "identity", position=position_dodge(), fill = "white") +
-  geom_bar(stat= "identity", position=position_dodge()) +
-  # geom_point() +
-  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.2) +
-  # geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.2, position=position_dodge(.9)) +
+  ggplot(aes(x = cluster, y = mean, fill = id))+
+  geom_col(position = position_dodge()) +
+  # geom_bar(stat="identity", aes(x = cluster, y = mean, fill = id), position=position_dodge()) +
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.2, position=position_dodge(.9)) +
   # geom_path(aes(group = id))+
-  theme_classic(base_size = 24) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  facet_wrap(~id, ncol = 1) +
-  # labs(y = "Mean usage level", x = "", color = "Exhaustion score")
-  labs(y = "Mean usage level", x = "", color = "Isoform", fill = "Isoform")
-p_meanUsage
+  labs(y = "Mean usage level")
 
-p_meanUsage = t_usageMat_tbl %>% 
-  filter(id %in% chn_id) %>%
-  # mutate(id = ifelse(id == "HAPLN3-201", "HAPLN3-201", "Other HAPLN3 isoforms")) %>% 
-  dplyr::group_by(id, cluster, mean_exhaustion_score) %>% 
-  filter(cluster %in% chn_clusters) %>%
-  summarise(mean = mean(usage), n = n(), sd = sd(usage), se = sd/sqrt(n)) %>% 
-  ungroup() %>% group_by(id) %>% 
-  ggplot(aes(x = cluster, y = mean, color = mean_exhaustion_score))+
-  geom_bar(stat= "identity", position=position_dodge(), fill = "white") +
-  geom_point() +
-  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.2) +
-  # geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.2, position=position_dodge(.9)) +
-  # geom_path(aes(group = id))+
-  theme_classic(base_size = 24) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  facet_wrap(~id, ncol = 1) +
-  labs(y = "Mean usage level", x = "", color = "Exhaustion score")
-p_meanUsage
-# pdf(file = 
-#       paste0(
-#         WhereAmI("01.DATA/01.ASinLung/03.graphs/04.publishable/"), chosen_gene, "_meanUsageCD8.pdf"
-#       ), title = chosen_gene, width = 8, height = 6)
-# p_meanUsage
-# dev.off()
-# t_testres = wilcox.test(
-#   t_q1, t_q2
-# )
+t_testres = wilcox.test(
+  t_q1, t_q2
+)
 ```
 
 
-### exhaustion rate trend
-
-#### plot usage vs. exhaustion rate
-```{r, fig.height=6, fig.width=8}
-chosen_gene = "CD8A"
-
-t_usageMat = usageMat[grep(rownames(usageMat), pattern = paste0("^", chosen_gene, "-\\d{3}")),]
-
-t_exhaustion_tbl = t_usageMat %>% 
-  melt(varnames = c("id", "cell_id"), value.name = "usage") %>% as_tibble() %>% 
-  dplyr::mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)]) %>% 
-  mutate(exhaustion_score = t_exhaustion_scores[cell_id], mean_exhaustion_score = t_exhaustion_scores_byCluster[cluster])
-
-# t_exhaustion_tbl %>% ggplot(
-#   aes(x = cluster, y = exhaustion_score)
-# ) +
-#   geom_boxplot() +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-# 
-# t_exhaustion_tbl %>% ggplot(
-#   aes(x = cluster, y = usage, fill = exhaustion_score)
-# ) +
-#   geom_boxplot() +
-#   facet_wrap(~id, ncol = 1) +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-t_exhaustion_tbl %>%
-  filter(id == "CD8A-202") %>% group_by(cluster) %>% 
-  summarise(exhaustion_score_mean = mean(exhaustion_score), usage_mean = mean(usage)) %>% 
-ggplot(aes(x = exhaustion_score_mean, y = usage_mean)) +
-  geom_point() +
-  geom_smooth(method = "lm")
-
-t_exhaustion_tbl %>% 
-    ggplot(aes(x = cluster, y = usage, color = mean_exhaustion_score))+
-  geom_boxplot() +
-    geom_point(stat = "summary", fun.y = "mean") +
-    geom_path(stat = "summary", fun.y = "mean", aes(group = id))+
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  facet_wrap(~id, ncol =1) +
-    labs(y = "Usage", x = "", fill = "Exhaustion score")
-
-cor_res = cor.test(with(t_exhaustion_tbl, exhaustion_score[id == "CD8A-202"]), with(t_exhaustion_tbl, usage[id == "CD8A-202"]))
-
-t_exhaustion_tbl %>% 
-  filter(id == "CD8A-202") %>% 
-  ggplot(aes(x = usage, y = exhaustion_score)) +
-  geom_point() +
-  geom_smooth(method = "lm") +
-  labs(x = "CD8A-202 usage")
-
-```
-
-### MIXture determination
-```{r}
-theme_set(theme_classic(base_size = 18))
-
-plot_MIXtureDistribution = function(chosen_gene, chosen_cluster, return_data = F){
-  t_usageMat = usageMat[grep(rownames(usageMat), pattern = paste0("^", chosen_gene, "-\\d{3}")),]
-  t_usageMat_tbl = t_usageMat %>% melt(varnames = c("id", "cell_id"), value.name = "usage") %>% as_tibble() %>% 
-    dplyr::mutate(
-      cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)],
-      tissue = pCells$characteristics..tissueType[match(cell_id, pCells$title)])
-   
-  # geneInspect_data = f_plotGeneInspect(chosen_gene, annotation_path = tsv_path, return_data = T)
-  # chn_id = geneInspect_data$count %>% rownames() %>% grep(invert = T, pattern = "MIX", value = T) %>% sort()
-  
-  t_usageMat_tbl$id = as.character(t_usageMat_tbl$id)
-  
-  t_usageMat_tbl = t_usageMat_tbl %>% dplyr::mutate(
-    cell_tag = all_obj_lst[[chosen_gene]]$cell_tags[cell_id])
-  
-  
-  t_usageMat_tbl = t_usageMat_tbl %>% dplyr::filter(grepl(cluster, pattern = chosen_cluster)) %>% 
-    dplyr::filter(grepl(cell_tag, pattern = "MIX")) 
-  
-  if(return_data){
-    return(t_usageMat_tbl)
-  }
-  
-  p_usageMix = t_usageMat_tbl %>% 
-    # dplyr::filter(id %in% chn_id) %>% 
-    ggplot(aes(x = id, y = usage, fill = id)) +
-    geom_boxplot() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    labs(title = paste0(chosen_gene, " MIX distribution in CD8 ", chosen_cluster), y = "Usage", x = "", fill = "Isoform")
-  return(p_usageMix)
-}
-
-chosen_gene = "PRDM1"
-chosen_cluster = "C3"
-
-p_usageMix = plot_MIXtureDistribution(chosen_gene, chosen_cluster)
-p_usageMix
-
-pdf(file =
-      paste0(
-        WhereAmI("01.DATA/01.ASinLung/03.graphs/04.publishable/"), chosen_gene, "_CD8_", chosen_cluster, "_mixture.pdf"
-      ), title = chosen_gene, width = 8, height = 6)
-p_usageMix
-
-dev.off()
-```
 
 # Enrichment changing events caculation by Tissue
 ```{r calculation by Tissue functions}
@@ -1619,7 +1873,7 @@ local_calculate_fishersByTissue = function(gene_name, expression_matrix, usage_m
 ```{r}
 chosen_genes = exprMat %>% rownames() %>% trans2gene() %>% unique()
 
-step = 1000
+step = 100
 steps = c(seq(1, length(chosen_genes), by = step), length(chosen_genes)+1)
 iter01 = ".I1"
 initiatePB(iter01)
@@ -1627,7 +1881,7 @@ all_obj_lst_byTissue = list()
 for(i in 2:length(steps)){
 # for(i in 1:length(chosen_genes)){
   t_chosen_genes = chosen_genes[steps[i-1]: (steps[i] -1)]
-  obj_lst = mclapply(t_chosen_genes, mc.cores = cores_to_use, FUN = function(chosen_gene){
+  obj_lst = mclapply(t_chosen_genes, mc.cores = opts$cores, FUN = function(chosen_gene){
   # chosen_gene = chosen_genes[i]
     obj = local_calculate_fishersByTissue(gene_name = chosen_gene, expression_matrix = exprMat, usage_matrix = usageMat, cell_info = pCells)
     return(obj)
@@ -1638,10 +1892,14 @@ for(i in 2:length(steps)){
   processBar(iter01, i, length(steps), tail = "ETA")
 }
 # names(all_obj_lst_byTissue) = chosen_genes
+t_enrichment_byTissue = lapply(all_obj_lst_byTissue, 
+                               # mc.cores = opts$cores, 
+                               function(x){
+  y = x$fisher.p.adj %>% melt(value.name = "enrich_score", varnames = c("id", "cluster")) %>% as_tibble(stringsAsFactors = F) %>% dplyr::filter(enrich_score > -log10(0.05)) %>% mutate_if(is.factor, as.character)
+  return(y)
+})
 
-enrichment_tbl_byTissue = do.call(rbind, mclapply(all_obj_lst_byTissue, mc.cores = cores_to_use, function(x){
-  return(x$fisher.p.adj %>% melt(value.name = "enrich_score", varnames = c("id", "cluster")) %>% as_tibble(stringsAsFactors = F) %>% dplyr::filter(enrich_score > -log10(0.05)) %>% mutate_if(is.factor, as.character))
-}))
+enrichment_tbl_byTissue = do.call(rbind, t_enrichment_byTissue)
 enrichment_tbl_byTissue = enrichment_tbl_byTissue %>% dplyr::mutate(gene_name = trans2gene(id)) %>% dplyr::distinct() %>% 
   dplyr::filter(!grepl(id, pattern = "NO_EXPR"))
 
@@ -1666,266 +1924,21 @@ loginfo("# of genes with more than 1 enrichment in more than 1 clusters: ", leng
 
 rm(list = grep(ls(), pattern = "^t_", value = T))
 # save(list = c("all_obj_lst_byTissue", "enrichment_filter_tbl_byTissue"),
-#      file = "/data1/jason/data/01.ASinLung/results/EnrichmentResultsByTissue.RDa")
+#      file = "/data1/jason/data/01.ASinLung/results/CD4/CD4_EnrichmentResultsByTissue.RDa")
 ```
 to perform cross exmaination with clone-based analysis ...
 
 # Output dataBrowser data set 
 ```{r}
-save(file = "/data1/jason/data/01.ASinLung/tmp/plt_data_181126.rda", list = c("pCells", "exprMat_sum_tbl", "all_obj_lst", "STRUCT.INFO", "all_obj_lst_byTissue"))
+# save(file = "/data1/jason/data/01.ASinLung/tmp/plt_data_181126.rda", list = c("pCells", "exprMat_sum_tbl", "all_obj_lst", "STRUCT.INFO", "all_obj_lst_byTissue"))
 ```
-
-
 
 # exploring (xiajibashi)
 ```{r}
 chn_txs = grep(rownames(exprMat), pattern = paste0("^", chosen_gene, "-\\d{3}"), value = T)
-chn_clusters = c("CD8_C6-LAYN")
+chn_clusters = c("CD4_C6-LAYN")
 chn_cells = (pCells %>% filter(characteristics..majorCluster %in% chn_clusters))$title
 exprMat[chn_txs, chn_cells] %>% melt(varnames = c("id", "cell_id"), value.name = "tpm") %>% mutate(cluster = pCells$characteristics..majorCluster[match(cell_id, pCells$title)]) %>% ggplot(aes(x = id, y = log10(tpm+1), fill = cluster)) + geom_boxplot() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# output pCell infos
-t_CD8pCell_table = pCells %>% dplyr::select(characteristics..patient, characteristics..sampleType, Number.of.input.reads, Average.input.read.length, Uniquely.mapped.reads.number)
-colnames(t_CD8pCell_table) = c("Patient", "SampleType", "Number of input reads", "Average input read length", "Uniquely mapped reads number")
 
-t_CD8pCell_table = t_CD8pCell_table %>% group_by(Patient) %>% summarise(`Number of cells` = n(), `Number of input reads (Mean)` = mean(`Number of input reads`), `Average input read length (Mean)` = mean(`Average input read length`), `Uniquely mapped reads number (Mean)` = mean(`Uniquely mapped reads number`))
-
-t_CD8pCell_wb = openxlsx::write.xlsx(t_CD8pCell_table, file = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/00.tmp/CD8pCells.xlsx")
-```
-
-# Summary of enrichments for each cluster
-```{r}
-require(clusterProfiler)
-require(enrichplot)
-
-chosen_genes = enrichment_filter_tbl$gene_name %>% unique()
-t_ego_enri = enrichGO(chosen_genes %>% XXXToEntrez(), OrgDb = "org.Hs.eg.db", ont="BP", readable=TRUE)
-t_ego_enri2 = simplify(t_ego_enri)
-dotplot(t_ego_enri2, showCategory = 10)
-```
-# Details about each category of events
-```{r, fig.height=6, fig.width=9}
-# theme_set(theme_classic(base_size = 20))
-t_enrich_tbl = enrichment_event_ann_tbl %>% filter(!involved_MIX, `Change-prot_seq`, `Change-Pfam_domains`)
-# gene counts for all 
-geneCounts_byClusters_tbl = t_enrich_tbl %>% 
-  dplyr::mutate(col_pairs = local_sortPairs(Cluster1, Cluster2)) %>% 
-  group_by(col_pairs) %>% summarise(gene_count = length(unique(`Gene name`))) %>% 
-  tidyr::separate(col = col_pairs, c("Cluster1", "Cluster2"), sep = ":")
-
-geneCounts_gtbl = geneCounts_byClusters_tbl %>% as_tbl_graph(directed = F)
-
-# set.seed(100)
-ggraph(geneCounts_gtbl, layout = "kk") +
-  geom_edge_link(aes(label = gene_count, color = gene_count), angle_calc = "along", label_dodge = unit(2.5, 'mm'), label_size = 6) +
-  ggraph::scale_edge_color_gradient(low = "#1E90FF", high = "#FFA500") +
-  geom_node_label(aes(label = name), size = 6) + 
-  theme_void(base_size = 18) +
-  coord_cartesian(expand = T, xlim = c(-1,1)) +
-  theme(legend.position = "bottom") +
-  labs(title = "Number of genes involved in distinctions with gain/loss of domains")
-
-# rm(geneCounts_byClusters_tbl, geneCounts_gtbl)
-```
-
-# Another way to describe enrichments(except tiles)
-```{r, fig.height=6, fig.width=8}
-require(ggrepel)
-theme_set(theme_classic(base_size = 25, base_family = "Arial"))
-t_cells = setNames(pCells %>% group_by(characteristics..majorCluster) %>% summarise(cell_number = n()), c("cluster", "cell_number"))
-
-t_numberbyCluster_tbl = left_join(enrichment_tbl %>% group_by(cluster) %>% summarise(gene_number = length(unique(gene_name))), t_cells, by = "cluster") 
-
-p_vsCellnumber = t_numberbyCluster_tbl %>% 
-  ggplot(aes(x = cell_number, y = gene_number)) +
-  geom_point(size = 3) +
-  geom_text_repel(aes(label = cluster), size = 6) +
-  labs(x = "Cell number", y = "Number of enriched genes")
-
-p_enrichedGenes = t_numberbyCluster_tbl %>% 
-  ggplot(aes(x = cluster, y = gene_number)) +
-  geom_col(size = 2) +
-  geom_text(aes(label = gene_number, y = gene_number + 100), size = 6) +
-  labs(x = "", y = "Number of enriched genes") +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1))
-  
-
-p_vsCellnumber
-ggsave(plot = p_vsCellnumber, device = "pdf", width = 8, height = 6, filename = paste0( 
-  WhereAmI("01.DATA/01.ASinLung/03.graphs/04.publishable/"), "EnrichedGenesbyClusterVsCellNumber.pdf"
-    ))
-p_enrichedGenes
-ggsave(plot = p_enrichedGenes, device = "pdf", width = 8, height = 6, filename = paste0( 
-  WhereAmI("01.DATA/01.ASinLung/03.graphs/04.publishable/"), "EnrichedGenesbyCluster.pdf"
-    ))
-
-```
-
-## GO analysis for each cluster
-```{r}
-load("/media/jason/144E5C104E5BE94E/tmp/eGenesbyClusterCD8.RDa")
-# require(clusterProfiler)
-# t_eGenes_cluster = lapply(
-#   pCells$characteristics..majorCluster %>% unique %>% sort,  
-#   function(x){ with(enrichment_tbl, gene_name[cluster == x])}) %>% 
-#   setNames(pCells$characteristics..majorCluster %>% unique %>% sort)
-# 
-# t_ego_cluster_lst = list()
-# for(chn_cluster in names(t_eGenes_cluster)){
-#   t_ego_cluster_lst[[chn_cluster]] = enrichGO(t_eGenes_cluster[[chn_cluster]] %>% XXXToEntrez(), OrgDb = "org.Hs.eg.db", ont="BP", readable=TRUE)
-#   loginfo(chn_cluster, "done")
-# }
-
-# save(list = c("t_eGenes_cluster", "t_ego_cluster_lst", "ego_cluster_lst"), file = "/media/jason/144E5C104E5BE94E/tmp/eGenesbyClusterCD8.RDa")
-# ego_cluster_lst = list()
-
-# for(chn_cluster in setdiff(names(t_ego_cluster_lst), names(ego_cluster_lst))){
-# # chn_cluster = names(t_ego_cluster_lst)[6]
-#   ego_cluster_lst[[chn_cluster]] = clusterProfiler::simplify(t_ego_cluster_lst[[chn_cluster]])
-#   cat(date(), chn_cluster, "done!\n")
-#   gc()
-# }
-
-```
-
-```{r, fig.width=12, fig.height=6}
-
-topN = 10
-for(x in names(ego_cluster_lst)){
-  y = as_tibble(ego_cluster_lst[[x]])
-  idx = order(y$p.adjust) %>% head(topN)
-  y = y[idx, ]
-  y$Description = factor(y$Description, levels = y$Description[order(y$p.adjust, decreasing = T)])
-  print(
-    y %>% 
-      ggplot(aes(x = Description, y = -log10(p.adjust))) + 
-      geom_col(fill = "red", width = 0.6) + 
-      labs(title = x, x = NULL, y = "-log10(adjusted p value)") + 
-      coord_flip() + 
-      geom_text(aes(label = round(..y.., 2)), hjust = -0.4, size = 6) + 
-      scale_y_continuous(position = "right", expand = expand_scale(mult = c(0, .5))) + 
-      theme(axis.ticks.y = element_blank(), axis.line.y = element_blank())
-  )
-}
-
-# mapply(ego_cluster_lst, FUN = function(x, title){dotplot(x, showCategory = 10) + labs(title = title)},  title = names(ego_cluster_lst), SIMPLIFY = F)
-pdf(file = paste0(
-      WhereAmI("01.DATA/01.ASinLung/03.graphs/04.publishable/"), "GObyCluster.pdf"
-    ), title = chosen_gene, width = 12, height = 6)
-
-for(x in names(ego_cluster_lst)){
-  y = as_tibble(ego_cluster_lst[[x]])
-  idx = order(y$p.adjust) %>% head(topN)
-  y = y[idx, ]
-  y$Description = factor(y$Description, levels = y$Description[order(y$p.adjust, decreasing = T)])
-  print(
-    y %>% 
-      ggplot(aes(x = Description, y = -log10(p.adjust))) + 
-      geom_col(fill = "red", width = 0.6) + 
-      labs(title = x, x = NULL, y = "-log10(adjusted p value)") + 
-      coord_flip() + 
-      geom_text(aes(label = round(..y.., 2)), hjust = -0.4, size = 6) + 
-      scale_y_continuous(position = "right", expand = expand_scale(mult = c(0, .5))) + 
-      theme(axis.ticks.y = element_blank(), axis.line.y = element_blank())
-  )
-}
-
-dev.off()
-
-```
-
-```{r, fig.height=8, fig.width=8}
-# emapplot(ego_cluster_lst[[6]])
-C6_enrichScores_tbl = enrichment_tbl %>% filter(cluster == "CD8_C6-LAYN") %>% group_by(gene_name) %>% dplyr::summarise(mean_enrich = mean(enrich_score)) %>% arrange(dplyr::desc(mean_enrich))
-
-C6_enrichScores = setNames(C6_enrichScores_tbl$mean_enrich, nm = (C6_enrichScores_tbl$gene_name %>% XXXToEntrez()))
-
-C6_gsea = gseGO(C6_enrichScores, ont = "BP", OrgDb = "org.Hs.eg.db", nPerm = 2000)
-
-
-C6_gsea_tbl = as_tibble(C6_gsea)
-
-C6_gsea_tbl %>% ggplot(aes(x = enrichmentScore, y = p.adjust)) +
-  geom_point(aes(size = setSize))
-
-
-idx = order(C6_gsea_tbl$p.adjust) %>% head(topN)
-t_gsea_tbl = C6_gsea_tbl[idx, ]
-t_gsea_tbl$Description = factor(t_gsea_tbl$Description, levels = t_gsea_tbl$Description[order(t_gsea_tbl$p.adjust, decreasing = T)])
-t_gsea_tbl %>% 
-  ggplot(aes(x = Description, y = enrichmentScore)) + 
-  geom_col(fill = "red", width = 0.6) + 
-  labs(title = "GSEA in C6", x = NULL) + 
-  coord_flip() + 
-  geom_text(aes(label = round(..y.., 2)), hjust = -0.4, size = 6) + 
-  scale_y_continuous(position = "right", expand = expand_scale(mult = c(0, .5))) + 
-  theme(axis.ticks.y = element_blank(), axis.line.y = element_blank())
-  
-
-openxlsx::write.xlsx(C6_gsea_tbl, file = "/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/04.tables/GSEAwithGO_C6.xlsx", asTable = T)
-
-chosen_descriptions = c(
-  "response to hypoxia",
-  "T cell activation",
-  "cell activation",
-  "T cell migration",
-  "T cell receptor signaling pathway"
-)
-
-emapplot(C6_gsea, 20, color = "p.adjust")
-for(chosen_description in chosen_descriptions){
-  chosen_id = with(C6_gsea_tbl, ID[Description == chosen_description])
-  p_gsea = gseaplot(C6_gsea, chosen_id, title = chosen_description)
-  print(p_gsea)
-  ggsave(plot = p_gsea, filename = paste0("/home/jason/Storage/SYNC2/01.DATA/01.ASinLung/03.graphs/04.publishable/enrichedInC6_gsea/", str_replace_all(chosen_description, "\\s", "_"), "_C6gsea.pdf"), device = "pdf", width = 8, height = 8)
-}
-
-```
-
-
-# T cell subtypes vs. Usage distinctions
-
-## Which T cell subtype tend to change from MIX 
-```{r}
-t_enrich_tbl = enrichment_filter_tbl %>% mutate(type = ifelse(grepl(id, pattern = "MIX"), "MIX", "isoform-dominated"))
-
-chosen_clusters = t_enrich_tbl$cluster %>% unique %>% sort()
-
-t_mat_lst = list()
-for(chosen_cluster in chosen_clusters){
-  t_mat = matrix(NA, 2, 2)
-  colnames(t_mat) = c("MIX", "Isoform_dominated")
-  rownames(t_mat) = c(chosen_cluster, "others")
-  t_mat[1, 1] = (t_enrich_tbl %>% filter(cluster == chosen_cluster, type == "MIX"))$gene_name %>% unique() %>% length()
-  t_mat[1, 2] = (t_enrich_tbl %>% filter(cluster == chosen_cluster, type != "MIX"))$gene_name %>% unique() %>% length()
-  t_mat[2, 1] = (t_enrich_tbl %>% filter(cluster != chosen_cluster, type == "MIX"))$gene_name %>% unique() %>% length()
-  t_mat[2, 2] = (t_enrich_tbl %>% filter(cluster != chosen_cluster, type != "MIX"))$gene_name %>% unique() %>% length()
-  
-  t_mat_lst[[chosen_cluster]] = t_mat
-}
-
-t_pval_lst = lapply(t_mat_lst, fisher.test)
-
-t_pval_tbl = tibble(
-  cluster = names(t_pval_lst), 
-  OR = unlist(lapply(t_pval_lst, function(x) x$estimate)),
-  p.value = unlist(lapply(t_pval_lst, function(x) x$p.value))
-) %>% mutate(p.adjust = p.adjust(p.value), `-log10(p.adjust)` = -log10(p.adjust))
-
-t_pval_tbl %>% 
-  ggplot(aes(x = OR, y = `-log10(p.adjust)`)) + 
-  geom_point(size = 4) + 
-  geom_vline(xintercept = 1, linetype = 2) +
-  geom_text_repel(aes(label = cluster), nudge_x = 0.1) +
-  labs(x = "Odd ratio", title = "Enrichment of MIX genes in each cluster")
-
-```
-
-### show MIX genes in C6
-```{r}
-chosen_genes = (t_enrich_tbl %>% filter(cluster %>% grepl(pattern = "C6"), type == "MIX"))$gene_name %>% unique()
-
-t_ego = enrichGO(chosen_genes %>% XXXToEntrez(), OrgDb = "org.Hs.eg.db", ont="BP", readable=TRUE)
-t_ego2 = simplify(t_ego)
-dotplot(t_ego2, showCategory = 10)
 ```

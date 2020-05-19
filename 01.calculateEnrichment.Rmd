@@ -40,112 +40,6 @@ step = 100
 cores_to_use = 10
 ```
 
-```{r functions definition}
-counts2FISHER_p = function(countMat, alternative = "greater"){
-  sum_trans = apply(countMat, 1, sum)
-  sum_cat = apply(countMat, 2, sum)
-  sum_all = sum(countMat)
-  
-  minor_trans = sum_trans - countMat
-  minor_cat = t(apply(countMat, 1, function(x) sum_cat - x))
-  minor_all = sum_all + countMat - matrix(rep(sum_cat, nrow(countMat)), nrow = nrow(countMat), byrow = T)  - matrix(rep(sum_trans, ncol(countMat)), ncol = ncol(countMat))
-  
-  fisher_res = countMat
-  for(i in 1:nrow(countMat)){
-    for(j in 1:ncol(countMat)){
-      fisherMat = matrix(c(
-        countMat[i,j], minor_trans[i,j],
-        minor_cat[i,j], minor_all[i,j]
-      ), 2,2)
-      fisher_res[i,j] = (fisher.test(fisherMat, alternative = alternative))$p.value
-    }
-  }
-  return(fisher_res)
-}
-
-local_calculate_fishers = function(gene_name, expression_matrix, usage_matrix, cell_info){
-# cutoffs according to p02.usage2labelcounts.R
-  # 
-  cell_ttlcounts_per_cluster = table(cell_info$characteristics..majorCluster)
-  # get txs names
-  chn_txs = rownames(usage_matrix) %>% grep(pattern = paste0("^", gene_name, "-\\d+"), value = T)
-  if(length(chn_txs) > 1) {
-    chn_usage_matrix = usage_matrix[chn_txs,]
-    chn_expression_matrix = expression_matrix[chn_txs, ] 
-  } else {
-    chn_usage_matrix = usage_matrix[chn_txs, ] %>% as.matrix() %>% t()
-    rownames(chn_usage_matrix) = chn_txs
-    chn_expression_matrix = expression_matrix[chn_txs, ] %>% as.matrix() %>% t()
-    rownames(chn_expression_matrix) = chn_txs
-  }
-  
-  chn_expressedMat = chn_expression_matrix > transcript_express_cutoff
-  chn_usage_matrix[!chn_expressedMat] = 0
-  groups = cell_info$characteristics..majorCluster[match(colnames(chn_usage_matrix), cell_info$title)]
-  cell_tags = apply((chn_usage_matrix > usage_cutoff), 2, function(x){
-    tx = chn_txs[x]
-    if(length(tx) == 0) 
-      return("") 
-    else 
-      return(tx)
-    })
-  
-  chn_countsMat = ((chn_usage_matrix > usage_cutoff) / 1) %>% t() %>% rowsum(., group = groups) %>% t()
-  no_express_cells = apply(!chn_expressedMat, 2, all)
-  assert_that(all(cell_tags[no_express_cells] == ""))
-  cell_tags[no_express_cells] = paste0(gene_name, "-NO_EXPR")
-  
-  no_expr_row = no_express_cells %>% tapply(., INDEX = groups, sum)
-  chn_countsMat = rbind(chn_countsMat, no_expr_row)
-  rownames(chn_countsMat)[nrow(chn_countsMat)] = paste0(gene_name, "-NO_EXPR")
-  # mix_row = apply((chn_usage_matrix <= usage_cutoff) , 2, all) %>% tapply(., INDEX = groups, sum) - no_expr_row
-  mix_row = cell_ttlcounts_per_cluster - base::colSums(chn_countsMat)
-  chn_countsMat = rbind(chn_countsMat, mix_row)
-  rownames(chn_countsMat)[nrow(chn_countsMat)] = paste0(gene_name, "-MIX")
-  
-  # calculate fisher matrix
-  chn_fishers = -log10(counts2FISHER_p(chn_countsMat) %>% p.adjust.matrix()) %>% round(digits = 2)
-  
-  # identify mix type
-  mix_noexprcells = apply((chn_usage_matrix <= usage_cutoff) , 2, all)
-  mix_cells = mix_noexprcells & (!no_express_cells)
-  if(nrow(chn_usage_matrix) > 1 ){
-    mix_usage_matrix = chn_usage_matrix[, mix_cells]
-  } else{
-    mix_usage_matrix = chn_usage_matrix[, mix_cells] %>% as.matrix() %>% t()
-  }
-  invisible(assert_that(all(chn_txs == rownames(mix_usage_matrix))))
-  
-  if(sum(mix_cells) > 1){
-    mix_types = apply(mix_usage_matrix, 2, function(x){
-    # take first two txs as mix type
-      first_two = x %>% sort(decreasing = T) %>% head(2) %>% names() %>% sort() %>% paste0(collapse = "|")
-      return(paste0(gene_name, "-MIX:", first_two))
-    }) 
-  } else if(sum(mix_cells) == 1){ 
-    first_two = mix_usage_matrix %>% sort(decreasing = T) %>% head(2) %>% names() %>% sort() %>% paste0(collapse = "|")
-    mix_types = paste0(gene_name, "-MIX:", first_two)
-  } else { # 0
-    mix_types = NULL
-  }
-  
-  cell_tags[names(mix_types)] = mix_types
-  
-  return(list(count = chn_countsMat, fisher.p.adj = chn_fishers, cell_tags = cell_tags))
-}
-
-p.adjust.matrix = function(p, ...){
-  stopifnot(is.matrix(p))
-  p.adjs = p.adjust(p, ...)
-  p.adj.matrix = matrix(
-    p.adjs, 
-    ncol = ncol(p),
-    dimnames = dimnames(p)
-    )
-  return(p.adj.matrix)
-}
-
-```
 
 # Loading 
 ```{r input}
@@ -165,7 +59,7 @@ GENE.INFO = read_tsv(path_to_GENEINFO)
 GENE.INFO = GENE.INFO %>% dplyr::filter(`Chromosome/scaffold name` %in% c(as.character(1:22), "X", "Y", "MT"))
 ```
 
-
+# Run enrichment analysis
 ```{r}
 # Run pipeline
 wb = EXWB.initiate()
@@ -218,15 +112,15 @@ for(target_CDType in target_CDTypes) {
   usageMat = assay(sceObj, "usage")
   sceObj = sceObj[,!is.na(usageMat[1,])]
   usageMat = assay(sceObj, "usage")
-  pGenes = as_tibble(rowData(sceObj))
-  exprMat = assay(sceObj, "tpm")
-  pCells = as_tibble(colData(sceObj))
-  
   
   # remove transcripts with only one txs annotate ----
   keep_tx = (rownames(usageMat) %>% trans2gene()) %in% genes_morethan1ann
-  usageMat = usageMat[keep_tx,]
-  exprMat = exprMat[keep_tx,]
+  sceObj = sceObj[keep_tx, ]
+  usageMat = assay(sceObj, "usage")
+  exprMat = assay(sceObj, "tpm")
+  pCells = as_tibble(colData(sceObj))
+  pGenes = as_tibble(rowData(sceObj))
+  
   
   # remove transcripts with only one txs remained ----
   genes_morethan1remain = rownames(usageMat) %>% trans2gene() %>% table()
@@ -252,6 +146,7 @@ for(target_CDType in target_CDTypes) {
   
   loginfo("Filter out isoforms: ", nrow(usageMat), "/", nrow(pGenes))
   
+  write_rds(sceObj, path = paste0(out_dir, "/", target_CDType, "_sceObj.rds"))
   
   rm(sceObj, keep_tx)
   invisible(gc())
@@ -288,8 +183,6 @@ for(target_CDType in target_CDTypes) {
     processBar(iter01, i, length(steps), tail = "ETA")
   }
   # saving enrichment results
-  write_rds(all_obj_lst,
-            path = paste0(out_dir, "/", target_CDType, "_enrichment_obj_lst.rds"))
   
   
   # identify txs with ???
@@ -326,10 +219,22 @@ for(target_CDType in target_CDTypes) {
                        sheetName = paste0("enrichment_", target_CDType),
                        sheetData = enrichment_tbl)
   
+  
+  loginfo("Saving analysis data bundle")
+  write_rds(all_obj_lst,
+            path = paste0(out_dir, "/", target_CDType, "_enrichment_obj_lst.rds"))
+  
+  
+  save(
+    enrichment_filter_tbl, enrichment_tbl, GENE.INFO, pGenes, pCells, 
+    exprMat_sum_tbl, 
+    file = paste0(out_dir, "01.", target_CDType, "_analysis_bundle.RDa")
+  )
+  
   rm(list = grep(ls(), pattern = "^t_", value = T))
   invisible(gc())
-  
 }
+save.image(file = "/data2/jason/data/IDEA_data/01.image.RDa")
 
 # Saving tables
 openxlsx::saveWorkbook(wb, file = paste0(out_dir, "/IDEA_enrichment_table.xlsx"), overwrite = T)

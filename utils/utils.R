@@ -739,38 +739,6 @@ f_plotGeneInspect = function(gene_name,
       axis.title = element_blank()
     )
   
-  # # count View ----
-  # p3 = obj$count[chn_txs, chosen_cats] %>%
-  #   melt(varnames = c("id", "category"), value.name = "cell_count") %>% as_tibble() %>% 
-  #   dplyr::group_by(category) %>% 
-  #   ggplot(aes(x = category, y = id)) +
-  #   geom_tile(aes(fill = `cell_count`), color = "white") +
-  #   geom_text(aes(label = `cell_count`)) +
-  #   scale_fill_gradient(low = "white") +
-  #   labs(fill = "Cell count") +
-  #   theme(
-  #     axis.text.y = element_text(face = colorado(src = chn_txs, canonical_tx)),
-  #     axis.text.x = element_blank(), 
-  #     axis.line = element_blank(),
-  #     axis.ticks = element_blank(),
-  #     axis.title = element_blank()
-  #   )
-  # 
-  # # enrichment Fisher View ----
-  # p4 = chn_fishers[chn_txs, chosen_cats] %>% melt(varnames = c("id", "category"), value.name = "-log10(fisher.p.adj)") %>% 
-  #   ggplot(aes(x = category, y = id)) +
-  #   geom_tile(aes(fill = `-log10(fisher.p.adj)`), color = "white") +
-  #   geom_text(aes(label = `-log10(fisher.p.adj)`)) +
-  #   scale_fill_gradient(low = "white", high = "red", limits = c(0, 2), na.value = "red") +
-  #   labs(fill = "-log10(q value)") +
-  #   theme(
-  #     axis.text.y = element_text(face = colorado(src = chn_txs, canonical_tx)),
-  #     axis.text.x = element_blank(), 
-  #     axis.line = element_blank(),
-  #     axis.ticks = element_blank(),
-  #     axis.title = element_blank()
-  #   )
-  
   # transcript view ----
   test_struct_tbl = STRUCT.INFO %>% dplyr::filter(`Transcript name` %in% txsForStructures) %>% dplyr::mutate(bioType = type2bio(GENE.INFO$`Transcript type`[match(`Transcript name`, GENE.INFO$`Transcript name`)]))
   p6 = local_drawTranscriptStrucutre(test_struct_tbl)
@@ -1210,4 +1178,222 @@ colorado = function(src, boulder) {
   } else {
     stop("All elements of 'boulder' must be in src")
   }
+}
+
+
+# Domain functions ----
+local_loadDomains = function(annotation_tsvs, process = T){
+  domain_info_list = list()
+  iter02 = ".I2"
+  initiatePB(iter02)
+  for (i in 1:length(annotation_tsvs)) {
+    tmp_file = annotation_tsvs[i]
+    trans_name = tmp_file %>% stringr::str_replace(".*//(.*)\\.fasta.*", replacement = "\\1")
+    if(file.exists(tmp_file)){
+      trans_info = suppressMessages(suppressWarnings(readr::read_tsv(
+      tmp_file, col_names = F, progress = F
+      )))
+      if (nrow(trans_info)){
+        trans_info = trans_info[, 1:10] # discard columnes out of 10
+        colnames(trans_info)[1:10] = c(
+        "Transcript name", "unknown01", "total_length", "database", "item", "description", "begin", "end", "unknown02", "unknown03"
+        )
+        domain_info_list[[trans_name]] = trans_info
+      }
+    } else { 
+      domain_info_list[[trans_name]] = NULL
+    }
+    if(process)
+      processBar(iter02, i, length(annotation_tsvs), tail = "ETA")
+  }
+  
+  if(length(domain_info_list)){
+    # combine tbl for chosen genes
+    domain_info_tbl = do.call(rbind, domain_info_list) %>% as_tibble()
+    # tidy df and adjust it to fit data structure for 
+    domain_info_tbl = domain_info_tbl %>% dplyr::select(-matches("unknown")) %>%
+    dplyr::mutate(length = end - begin, order = as.integer(as.factor(`Transcript name`)))
+    return(domain_info_tbl) 
+  } else{
+    warning("local_loadDomains: nothing has been loaded!")
+    return(tibble())
+  }
+}
+
+local_clusterSpec_txs = function(x, t_tbl){
+  sapply(x, function(x){
+    t_tbl$id[t_tbl$cluster == x] %>% paste0(collapse = "|")
+  })
+}
+
+local_expand = function(.tbl){
+  # hard coded col_name
+  col_name1 = "C1_Tx1"
+  col_name2 = "C2_Tx2"
+  t_repeatedTx_lst1 = .tbl[[col_name1]] %>% strsplit(split = "|", fixed = T)
+  t_repeatedTx_lst2 = .tbl[[col_name2]] %>% strsplit(split = "|", fixed = T)
+  
+  res_tbl = tibble()
+  for(k in 1:nrow(.tbl)){
+    single_row = .tbl[k, ]
+    t_tx1 = t_repeatedTx_lst1[[k]] %>% sort()
+    t_tx2 = t_repeatedTx_lst2[[k]] %>% sort()
+    common_txs = intersect(t_tx1, t_tx2)
+    spec_tx1 = setdiff(t_tx1, t_tx2)
+    spec_tx2 = setdiff(t_tx2, t_tx1)
+    
+    t_col1 = rep(spec_tx1, each = length(t_tx2))
+    t_col2 = rep(t_tx2, times = length(spec_tx1))
+    t_col2 = c(t_col2, rep(spec_tx2, each = length(t_tx1)))
+    t_col1 = c(t_col1, rep(t_tx1, times = length(spec_tx2)))
+    t_df = data.frame(t_col1, t_col2, stringsAsFactors = F) %>% distinct()
+    dup_single_row = single_row[rep(1, nrow(t_df)), ]
+    dup_single_row[[col_name1]] = t_df[,1]
+    dup_single_row[[col_name2]] = t_df[,2]
+    res_tbl = bind_rows(res_tbl, dup_single_row)
+  }
+  
+  return(res_tbl)
+}
+
+# annotate enrichment changing events ----
+local_sortPairs = function(x, y, sep = ":"){
+  stopifnot(length(x) == length(y))
+  return(lapply(1:length(x), function(i){paste0(sort(c(x[i], y[i])), collapse = ":")}) %>% unlist())
+}
+
+local_detectChanges = function(df, compare_var){
+  quo_varNew = paste0("Change-", compare_var)
+  compare_var1 = paste0("Tx1-", compare_var)
+  compare_var2 = paste0("Tx2-", compare_var)
+  compare_var1 = rlang::sym(compare_var1)
+  compare_var2 = rlang::sym(compare_var2)
+  res_data = df %>% dplyr::mutate(
+     !!quo_varNew := (!!compare_var1 != !!compare_var2)
+  )
+  return(res_data)
+}
+
+# add subcellular location ----
+local_determineSubcellular = function(SignalP, Transmembrane_number){
+  return(if_else(Transmembrane_number != 0, "membrane", 
+          if_else(SignalP != "" & Transmembrane_number == 0, "secreted", 
+                  if_else(SignalP == "" & Transmembrane_number == 0, "cytoplasmic", "others"))))
+}
+
+# create a vennpie ----
+local_addpositionForpie = function(x,  arc_start = 0, arc_end = 2 * pi){
+  require(dplyr)
+  x = x %>% dplyr::mutate(
+    end = (arc_end - arc_start)*cumsum(amount)/sum(amount) + arc_start)
+  starts = lag(x$end, default = arc_start)
+  x = x %>% dplyr::mutate(
+    start = starts
+  )
+  return(x)
+}
+
+# Enrichment calculation
+counts2FISHER_p = function(countMat, alternative = "greater"){
+  sum_trans = apply(countMat, 1, sum)
+  sum_cat = apply(countMat, 2, sum)
+  sum_all = sum(countMat)
+  
+  minor_trans = sum_trans - countMat
+  minor_cat = t(apply(countMat, 1, function(x) sum_cat - x))
+  minor_all = sum_all + countMat - matrix(rep(sum_cat, nrow(countMat)), nrow = nrow(countMat), byrow = T)  - matrix(rep(sum_trans, ncol(countMat)), ncol = ncol(countMat))
+  
+  fisher_res = countMat
+  for(i in 1:nrow(countMat)){
+    for(j in 1:ncol(countMat)){
+      fisherMat = matrix(c(
+        countMat[i,j], minor_trans[i,j],
+        minor_cat[i,j], minor_all[i,j]
+      ), 2,2)
+      fisher_res[i,j] = (fisher.test(fisherMat, alternative = alternative))$p.value
+    }
+  }
+  return(fisher_res)
+}
+
+local_calculate_fishers = function(gene_name, expression_matrix, usage_matrix, cell_info){
+# cutoffs according to p02.usage2labelcounts.R
+  # 
+  cell_ttlcounts_per_cluster = table(cell_info$characteristics..majorCluster)
+  # get txs names
+  chn_txs = rownames(usage_matrix) %>% grep(pattern = paste0("^", gene_name, "-\\d+"), value = T)
+  if(length(chn_txs) > 1) {
+    chn_usage_matrix = usage_matrix[chn_txs,]
+    chn_expression_matrix = expression_matrix[chn_txs, ] 
+  } else {
+    chn_usage_matrix = usage_matrix[chn_txs, ] %>% as.matrix() %>% t()
+    rownames(chn_usage_matrix) = chn_txs
+    chn_expression_matrix = expression_matrix[chn_txs, ] %>% as.matrix() %>% t()
+    rownames(chn_expression_matrix) = chn_txs
+  }
+  
+  chn_expressedMat = chn_expression_matrix > transcript_express_cutoff
+  chn_usage_matrix[!chn_expressedMat] = 0
+  groups = cell_info$characteristics..majorCluster[match(colnames(chn_usage_matrix), cell_info$title)]
+  cell_tags = apply((chn_usage_matrix > usage_cutoff), 2, function(x){
+    tx = chn_txs[x]
+    if(length(tx) == 0) 
+      return("") 
+    else 
+      return(tx)
+    })
+  
+  chn_countsMat = ((chn_usage_matrix > usage_cutoff) / 1) %>% t() %>% rowsum(., group = groups) %>% t()
+  no_express_cells = apply(!chn_expressedMat, 2, all)
+  assert_that(all(cell_tags[no_express_cells] == ""))
+  cell_tags[no_express_cells] = paste0(gene_name, "-NO_EXPR")
+  
+  no_expr_row = no_express_cells %>% tapply(., INDEX = groups, sum)
+  chn_countsMat = rbind(chn_countsMat, no_expr_row)
+  rownames(chn_countsMat)[nrow(chn_countsMat)] = paste0(gene_name, "-NO_EXPR")
+  # mix_row = apply((chn_usage_matrix <= usage_cutoff) , 2, all) %>% tapply(., INDEX = groups, sum) - no_expr_row
+  mix_row = cell_ttlcounts_per_cluster - base::colSums(chn_countsMat)
+  chn_countsMat = rbind(chn_countsMat, mix_row)
+  rownames(chn_countsMat)[nrow(chn_countsMat)] = paste0(gene_name, "-MIX")
+  
+  # calculate fisher matrix
+  chn_fishers = -log10(counts2FISHER_p(chn_countsMat) %>% p.adjust.matrix()) %>% round(digits = 2)
+  
+  # identify mix type
+  mix_noexprcells = apply((chn_usage_matrix <= usage_cutoff) , 2, all)
+  mix_cells = mix_noexprcells & (!no_express_cells)
+  if(nrow(chn_usage_matrix) > 1 ){
+    mix_usage_matrix = chn_usage_matrix[, mix_cells]
+  } else{
+    mix_usage_matrix = chn_usage_matrix[, mix_cells] %>% as.matrix() %>% t()
+  }
+  invisible(assert_that(all(chn_txs == rownames(mix_usage_matrix))))
+  
+  if(sum(mix_cells) > 1){
+    mix_types = apply(mix_usage_matrix, 2, function(x){
+    # take first two txs as mix type
+      first_two = x %>% sort(decreasing = T) %>% head(2) %>% names() %>% sort() %>% paste0(collapse = "|")
+      return(paste0(gene_name, "-MIX:", first_two))
+    }) 
+  } else if(sum(mix_cells) == 1){ 
+    first_two = mix_usage_matrix %>% sort(decreasing = T) %>% head(2) %>% names() %>% sort() %>% paste0(collapse = "|")
+    mix_types = paste0(gene_name, "-MIX:", first_two)
+  } else { # 0
+    mix_types = NULL
+  }
+  
+  cell_tags[names(mix_types)] = mix_types
+  
+  return(list(count = chn_countsMat, fisher.p.adj = chn_fishers, cell_tags = cell_tags))
+}
+
+p.adjust.matrix = function(p, ...){
+  stopifnot(is.matrix(p))
+  p.adjs = p.adjust(p, ...)
+  p.adj.matrix = matrix(
+    p.adjs, 
+    ncol = ncol(p),
+    dimnames = dimnames(p)
+    )
+  return(p.adj.matrix)
 }
