@@ -147,6 +147,7 @@ for(target_CDType in target_CDTypes) {
   loginfo("Filter out isoforms: ", nrow(usageMat), "/", nrow(pGenes))
   
   write_rds(sceObj, path = paste0(out_dir, "/", target_CDType, "_sceObj.rds"))
+  write_rds(usageMat, path = paste0(out_dir, "/", target_CDType, "_flt_usageMat.rds"))
   
   rm(sceObj, keep_tx)
   invisible(gc())
@@ -238,4 +239,3 @@ for(target_CDType in target_CDTypes) {
 # Saving tables
 openxlsx::saveWorkbook(wb, file = paste0(out_dir, "/IDEA_enrichment_table.xlsx"), overwrite = T)
 ```
-
