@@ -560,5 +560,4 @@ save(
   file = paste0(out_dir, "02.", target_CDType, "_analysis_bundle.RDa")
 )
 
-save.image(file = "/data2/jason/data/IDEA_data/02.image.RDa")
 ```

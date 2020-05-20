@@ -234,7 +234,6 @@ for(target_CDType in target_CDTypes) {
   rm(list = grep(ls(), pattern = "^t_", value = T))
   invisible(gc())
 }
-save.image(file = "/data2/jason/data/IDEA_data/01.image.RDa")
 
 # Saving tables
 openxlsx::saveWorkbook(wb, file = paste0(out_dir, "/IDEA_enrichment_table.xlsx"), overwrite = T)
