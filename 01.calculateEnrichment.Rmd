@@ -66,10 +66,9 @@ wb = EXWB.initiate()
 for(target_CDType in target_CDTypes) {
   cat("Now running", target_CDType, "\n")
   if (target_CDType == "CD8") {
-    chn_clusters = all_sceObj$characteristics..majorCluster %>% unique() %>% grep(pattern = target_CDType, value = T) %>% grep(pattern = "C7",
-                                                                                                                           invert = T,
-                                                                                                                           value = T) # extract CD8+ T cells without MAIT cells
-  } else if (target_CDType == "CD4") {
+    chn_clusters = all_sceObj$characteristics..majorCluster %>% unique() %>% grep(pattern = target_CDType, value = T) %>% 
+      grep(pattern = "C7", invert = T, value = T) # extract CD8+ T cells without MAIT cells 
+    } else if (target_CDType == "CD4") {
     chn_clusters = (
       all_sceObj$characteristics..majorCluster %>% unique() %>% grep(pattern = "CD4", value = T)
     )[1:9]
