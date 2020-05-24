@@ -141,38 +141,6 @@ extractCD = function(Mat, spare = 6, metaData, CD){
 }
 
 # Plot ----
-
-
-# easy plot PCA
-# PCbiplot <- function(PC, data, colour, ...) {
-#   require(ggplot2)
-#   require(ggfortify)
-#   # PC being a prcomp object
-#   args = list(...)
-#   args$loadings = ifelse(is.null(args$loadings), T, args$loadings)
-#   args$loadings.label = ifelse(is.null(args$loadings.label), T, args$loadings.label)
-#   args$loadings.label.size = ifelse(is.null(args$loadings.label.size), 3, args$loadings.label.size)
-#   args$loadings.colour = ifelse(is.null(args$loadings.colour), "purple", args$loadings.colour)
-#   args$draw.now = ifelse(is.null(args$draw.now), T, args$draw.now)
-#   
-#   prop_var <- PC$sdev^2 / sum(PC$sdev^2)
-#   
-#   plot <-
-#     autoplot(
-#       PC, data = data, colour = colour,
-#       loadings = args$loadings, loadings.label = args$loadings.label,
-#       loadings.label.size = args$loadings.label.size,
-#       loadings.colour = args$loadings.colour
-#     ) + 
-#     labs(
-#       x = sprintf("PC1 : %.2f %% var explained", prop_var[1] * 100),
-#       y = sprintf("PC2 : %.2f %% var explained", prop_var[2] * 100)) +
-#     theme_gray(base_size = 20)
-#   
-#   if(args$draw.now) print(plot)
-#   return(invisible(plot))
-# }
-
 #' ... could contain: pat CD tissue 
 plotEnrichment = function(gene_name, counts_matrix, ...){
   require("pheatmap")
