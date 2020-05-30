@@ -29,6 +29,8 @@ wd = getwd()
 source(paste0(wd, "/utils/ToolKit.R"))
 source(paste0(wd, "/utils/utils.R"))
 
+target_CDType = "CD8"
+in_dir = paste0(wd, "/demo/")
 ```
 
 # Loading 
@@ -38,9 +40,6 @@ suppressPackageStartupMessages(library("tidyverse"))
 suppressPackageStartupMessages(library("reshape2"))
 suppressPackageStartupMessages(library("patchwork"))
 theme_set(theme_classic(base_size = 20))
-
-target_CDType = "CD8"
-in_dir = paste0(wd, "/../IDEA_data/02.IDEAoutputs/")
 
 load(paste0(in_dir, "02.", target_CDType, "_analysis_bundle.RDa"))
 
@@ -54,14 +53,6 @@ all_obj_lst = read_rds(
 ```{r inspect single gene, fig.height=14, fig.width=10}
 theme_set(theme_classic(base_size = 20))
 chosen_gene = "CD8A"
-total = f_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
-total
-
-```
-
-```{r inspect single gene, fig.height=14, fig.width=10}
-theme_set(theme_classic(base_size = 20))
-chosen_gene = "PTPRC"
 total = f_plotGeneInspect(chosen_gene, annotation_path = tsv_path)
 total
 
