@@ -1,0 +1,53 @@
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PANTHER	PTHR19134		226	1252	0.0	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PANTHER	PTHR19134:SF284		226	1252	0.0	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Gene3D	G3DSA:3.90.190.10		624	918	4.6E-115	T	05-08-2018	IPR029021	Protein-tyrosine phosphatase-like		
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Phobius	SIGNAL_PEPTIDE_C_REGION	C-terminal region of a signal peptide.	18	25	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Gene3D	G3DSA:2.60.40.10		483	574	1.5E-8	T	05-08-2018	IPR013783	Immunoglobulin-like fold		
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SUPERFAMILY	SSF49265		391	564	1.24E-18	T	05-08-2018	IPR036116	Fibronectin type III superfamily	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Phobius	SIGNAL_PEPTIDE_N_REGION	N-terminal region of a signal peptide.	1	8	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PRINTS	PR00700	Protein tyrosine phosphatase signature	879	894	3.1E-36	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PRINTS	PR00700	Protein tyrosine phosphatase signature	895	905	3.1E-36	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PRINTS	PR00700	Protein tyrosine phosphatase signature	809	826	3.1E-36	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PRINTS	PR00700	Protein tyrosine phosphatase signature	706	713	3.1E-36	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PRINTS	PR00700	Protein tyrosine phosphatase signature	848	866	3.1E-36	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PRINTS	PR00700	Protein tyrosine phosphatase signature	722	742	3.1E-36	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Phobius	SIGNAL_PEPTIDE	Signal peptide region	1	25	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Pfam	PF00102	Protein-tyrosine phosphatase	677	910	7.3E-82	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Pfam	PF00102	Protein-tyrosine phosphatase	968	1226	3.4E-76	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	CDD	cd00047	PTPc	971	1226	1.56372E-95	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	CDD	cd00063	FN3	392	462	2.1379E-5	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	841	863	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	CDD	cd00063	FN3	485	565	5.04036E-10	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	ProSiteProfiles	PS50853	Fibronectin type-III domain profile.	391	483	9.918	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	ProSiteProfiles	PS50853	Fibronectin type-III domain profile.	484	576	13.255	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Gene3D	G3DSA:3.90.190.10		919	1233	1.1E-104	T	05-08-2018	IPR029021	Protein-tyrosine phosphatase-like		
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	ProSiteProfiles	PS50056	Tyrosine specific protein phosphatases family profile.	1135	1219	17.947	T	05-08-2018	IPR000387	Tyrosine specific protein phosphatases domain	GO:0016311|GO:0016791	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	ProSiteProfiles	PS50056	Tyrosine specific protein phosphatases family profile.	832	903	18.361	T	05-08-2018	IPR000387	Tyrosine specific protein phosphatases domain	GO:0016311|GO:0016791	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	ProSiteProfiles	PS50055	PTP type protein phosphatase family profile.	653	912	57.457	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	ProSiteProfiles	PS50055	PTP type protein phosphatase family profile.	944	1228	49.278	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Coils	Coil		1238	1258	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SignalP_GRAM_NEGATIVE	SignalP-noTM		1	17	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SignalP_EUK	SignalP-noTM		1	25	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SUPERFAMILY	SSF52799		923	1227	2.88E-83	T	05-08-2018	IPR029021	Protein-tyrosine phosphatase-like		
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	26	577	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SMART	SM00060		485	563	0.0032	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SMART	SM00060		392	468	0.027	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Pfam	PF00041	Fibronectin type III domain	395	462	1.1E-6	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Pfam	PF00041	Fibronectin type III domain	486	564	8.3E-6	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	MobiDBLite	mobidb-lite	consensus disorder prediction	1280	1306	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Gene3D	G3DSA:2.60.40.10		391	482	1.2E-5	T	05-08-2018	IPR013783	Immunoglobulin-like fold		
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	CDD	cd00047	PTPc	680	911	3.30676E-114	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Phobius	SIGNAL_PEPTIDE_H_REGION	Hydrophobic region of a signal peptide.	9	17	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Pfam	PF12567	Leukocyte receptor CD45	237	295	8.0E-26	T	05-08-2018	IPR016335	Receptor-type tyrosine-protein phosphatase C	GO:0004725|GO:0050852	Reactome: R-HSA-202427|Reactome: R-HSA-416700|Reactome: R-HSA-6798695
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Phobius	CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the cytoplasm.	600	1306	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Phobius	TRANSMEMBRANE	Region of a membrane-bound protein predicted to be embedded in the membrane.	578	599	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	MobiDBLite	mobidb-lite	consensus disorder prediction	1261	1306	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	PIRSF	PIRSF002004		1	1303	0.0	T	05-08-2018	IPR016335	Receptor-type tyrosine-protein phosphatase C	GO:0004725|GO:0050852	Reactome: R-HSA-202427|Reactome: R-HSA-416700|Reactome: R-HSA-6798695
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	580	602	-	T	05-08-2018
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SUPERFAMILY	SSF52799		632	912	1.44E-102	T	05-08-2018	IPR029021	Protein-tyrosine phosphatase-like		
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	Pfam	PF12453	Protein tyrosine phosphatase N terminal	7	32	4.5E-16	T	05-08-2018	IPR024739	Protein tyrosine phosphatase, receptor type, N-terminal		Reactome: R-HSA-202427|Reactome: R-HSA-416700|Reactome: R-HSA-6798695
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SMART	SM00194		652	914	2.2E-125	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SMART	SM00194		943	1230	1.4E-114	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	ProSitePatterns	PS00383	Tyrosine specific protein phosphatases active site.	851	861	-	T	05-08-2018	IPR016130	Protein-tyrosine phosphatase, active site	GO:0004725|GO:0016311	
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SMART	SM00404		1116	1227	2.4E-33	T	05-08-2018	IPR003595	Protein-tyrosine phosphatase, catalytic		
+PTPRC-209	803ff227f325068acf025be0bfda2c27	1306	SMART	SM00404		810	911	3.3E-41	T	05-08-2018	IPR003595	Protein-tyrosine phosphatase, catalytic		

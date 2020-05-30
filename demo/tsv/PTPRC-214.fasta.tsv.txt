@@ -1,0 +1,30 @@
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Pfam	PF12453	Protein tyrosine phosphatase N terminal	7	32	1.9E-16	T	05-08-2018	IPR024739	Protein tyrosine phosphatase, receptor type, N-terminal		Reactome: R-HSA-202427|Reactome: R-HSA-416700|Reactome: R-HSA-6798695
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	466	488	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Gene3D	G3DSA:2.60.40.10		280	358	5.6E-5	T	05-08-2018	IPR013783	Immunoglobulin-like fold		
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Phobius	CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the cytoplasm.	486	600	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	PANTHER	PTHR19134:SF284		121	600	1.4E-181	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	ProSiteProfiles	PS50853	Fibronectin type-III domain profile.	370	462	13.255	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	ProSiteProfiles	PS50853	Fibronectin type-III domain profile.	277	369	9.918	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	PANTHER	PTHR19134		121	600	1.4E-181	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Phobius	SIGNAL_PEPTIDE	Signal peptide region	1	25	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	SUPERFAMILY	SSF49265		277	450	3.47E-19	T	05-08-2018	IPR036116	Fibronectin type III superfamily	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Pfam	PF00041	Fibronectin type III domain	281	348	4.0E-7	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Pfam	PF00041	Fibronectin type III domain	372	450	3.0E-6	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	26	463	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Phobius	SIGNAL_PEPTIDE_N_REGION	N-terminal region of a signal peptide.	1	8	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	SignalP_EUK	SignalP-noTM		1	25	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Phobius	SIGNAL_PEPTIDE_C_REGION	C-terminal region of a signal peptide.	18	25	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Pfam	PF00102	Protein-tyrosine phosphatase	563	599	4.3E-7	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	SignalP_GRAM_NEGATIVE	SignalP-noTM		1	17	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	SUPERFAMILY	SSF52799		518	600	1.01E-19	T	05-08-2018	IPR029021	Protein-tyrosine phosphatase-like		
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	CDD	cd00063	FN3	371	451	1.22883E-10	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Gene3D	G3DSA:3.90.190.10		510	600	3.3E-21	T	05-08-2018	IPR029021	Protein-tyrosine phosphatase-like		
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Phobius	TRANSMEMBRANE	Region of a membrane-bound protein predicted to be embedded in the membrane.	464	485	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Gene3D	G3DSA:2.60.40.10		359	459	1.5E-10	T	05-08-2018	IPR013783	Immunoglobulin-like fold		
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	CDD	cd00063	FN3	278	348	5.31023E-6	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Pfam	PF12567	Leukocyte receptor CD45	123	181	3.0E-26	T	05-08-2018	IPR016335	Receptor-type tyrosine-protein phosphatase C	GO:0004725|GO:0050852	Reactome: R-HSA-202427|Reactome: R-HSA-416700|Reactome: R-HSA-6798695
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	ProSiteProfiles	PS50055	PTP type protein phosphatase family profile.	539	600	12.811	T	05-08-2018	IPR000242	PTP type protein phosphatase	GO:0004725|GO:0006470	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	Phobius	SIGNAL_PEPTIDE_H_REGION	Hydrophobic region of a signal peptide.	9	17	-	T	05-08-2018
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	SMART	SM00060		371	449	0.0032	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	SMART	SM00060		278	354	0.027	T	05-08-2018	IPR003961	Fibronectin type III	GO:0005515	
+PTPRC-214	4afeb7c88a43df626e97135a9449bb95	600	MobiDBLite	mobidb-lite	consensus disorder prediction	27	72	-	T	05-08-2018

@@ -1,0 +1,17 @@
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	SignalP_EUK	SignalP-noTM		1	17	-	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	MobiDBLite	mobidb-lite	consensus disorder prediction	174	220	-	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	Phobius	SIGNAL_PEPTIDE_N_REGION	N-terminal region of a signal peptide.	1	1	-	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	Pfam	PF07686	Immunoglobulin V-set domain	55	150	8.5E-13	T	30-08-2018	IPR013106	Immunoglobulin V-set domain		
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	Phobius	SIGNAL_PEPTIDE_H_REGION	Hydrophobic region of a signal peptide.	2	12	-	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	SMART	SM00406		65	148	1.5E-5	T	30-08-2018	IPR013106	Immunoglobulin V-set domain		
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	Phobius	SIGNAL_PEPTIDE_C_REGION	C-terminal region of a signal peptide.	13	17	-	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	PANTHER	PTHR22804:SF40		4	164	5.1E-59	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	PANTHER	PTHR22804		4	164	5.1E-59	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	SUPERFAMILY	SSF48726		50	161	6.15E-15	T	30-08-2018	IPR036179	Immunoglobulin-like domain superfamily		
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	SMART	SM00409		55	164	6.7E-6	T	30-08-2018	IPR003599	Immunoglobulin subtype		
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	CDD	cd05877	Ig_LP_like	62	164	4.89699E-60	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	MobiDBLite	mobidb-lite	consensus disorder prediction	174	226	-	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	18	226	-	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	ProSiteProfiles	PS50835	Ig-like domain profile.	48	164	8.557	T	30-08-2018	IPR007110	Immunoglobulin-like domain		
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	Phobius	SIGNAL_PEPTIDE	Signal peptide region	1	17	-	T	30-08-2018
+HAPLN3-203	383e9a43c0ee9e166c65dd5e0983cfcb	226	Gene3D	G3DSA:2.60.40.10		46	163	1.6E-21	T	30-08-2018	IPR013783	Immunoglobulin-like fold		

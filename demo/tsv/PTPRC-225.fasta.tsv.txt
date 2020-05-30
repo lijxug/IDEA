@@ -1,0 +1,8 @@
+PTPRC-225	2799baa26c3c95f605aa95d5f9d794d9	116	Phobius	SIGNAL_PEPTIDE	Signal peptide region	1	23	-	T	29-08-2018
+PTPRC-225	2799baa26c3c95f605aa95d5f9d794d9	116	Phobius	SIGNAL_PEPTIDE_H_REGION	Hydrophobic region of a signal peptide.	7	15	-	T	29-08-2018
+PTPRC-225	2799baa26c3c95f605aa95d5f9d794d9	116	Phobius	SIGNAL_PEPTIDE_N_REGION	N-terminal region of a signal peptide.	1	6	-	T	29-08-2018
+PTPRC-225	2799baa26c3c95f605aa95d5f9d794d9	116	Pfam	PF12453	Protein tyrosine phosphatase N terminal	5	30	1.9E-17	T	29-08-2018	IPR024739	Protein tyrosine phosphatase, receptor type, N-terminal		Reactome: R-HSA-202427|Reactome: R-HSA-416700|Reactome: R-HSA-6798695
+PTPRC-225	2799baa26c3c95f605aa95d5f9d794d9	116	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	24	116	-	T	29-08-2018
+PTPRC-225	2799baa26c3c95f605aa95d5f9d794d9	116	SignalP_EUK	SignalP-noTM		1	23	-	T	29-08-2018
+PTPRC-225	2799baa26c3c95f605aa95d5f9d794d9	116	Phobius	SIGNAL_PEPTIDE_C_REGION	C-terminal region of a signal peptide.	16	23	-	T	29-08-2018
+PTPRC-225	2799baa26c3c95f605aa95d5f9d794d9	116	MobiDBLite	mobidb-lite	consensus disorder prediction	23	116	-	T	29-08-2018

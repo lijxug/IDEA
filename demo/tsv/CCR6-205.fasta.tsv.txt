@@ -1,0 +1,28 @@
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	83	105	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00645	C-X-C chemokine receptor type 4 signature	71	87	3.2E-9	T	29-08-2018	IPR001277	CXC chemokine receptor 4/atypical chemokine receptor 2	GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00645	C-X-C chemokine receptor type 4 signature	145	155	3.2E-9	T	29-08-2018	IPR001277	CXC chemokine receptor 4/atypical chemokine receptor 2	GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00645	C-X-C chemokine receptor type 4 signature	109	124	3.2E-9	T	29-08-2018	IPR001277	CXC chemokine receptor 4/atypical chemokine receptor 2	GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00645	C-X-C chemokine receptor type 4 signature	41	56	3.2E-9	T	29-08-2018	IPR001277	CXC chemokine receptor 4/atypical chemokine receptor 2	GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00237	Rhodopsin-like GPCR superfamily signature	81	102	5.3E-23	T	29-08-2018	IPR000276	G protein-coupled receptor, rhodopsin-like	GO:0004930|GO:0007186|GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00237	Rhodopsin-like GPCR superfamily signature	48	72	5.3E-23	T	29-08-2018	IPR000276	G protein-coupled receptor, rhodopsin-like	GO:0004930|GO:0007186|GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00237	Rhodopsin-like GPCR superfamily signature	125	147	5.3E-23	T	29-08-2018	IPR000276	G protein-coupled receptor, rhodopsin-like	GO:0004930|GO:0007186|GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	ProSiteProfiles	PS50262	G-protein coupled receptors family 1 profile.	63	155	21.976	T	29-08-2018	IPR017452	GPCR, rhodopsin-like, 7TM	GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Gene3D	G3DSA:1.20.1070.10		36	155	2.1E-38	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	105	123	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	ProSitePatterns	PS00237	G-protein coupled receptors family 1 signature.	131	147	-	T	29-08-2018	IPR000276	G protein-coupled receptor, rhodopsin-like	GO:0004930|GO:0007186|GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PANTHER	PTHR10489:SF611		7	155	8.7E-79	T	29-08-2018	IPR004067	CC chemokine receptor 6	GO:0006935|GO:0006955|GO:0007186|GO:0016021|GO:0016493	Reactome: R-HSA-1461957|Reactome: R-HSA-380108|Reactome: R-HSA-418594
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	1	50	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	125	147	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Phobius	TRANSMEMBRANE	Region of a membrane-bound protein predicted to be embedded in the membrane.	83	104	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	49	71	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PANTHER	PTHR10489		7	155	8.7E-79	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Phobius	TRANSMEMBRANE	Region of a membrane-bound protein predicted to be embedded in the membrane.	51	74	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	SUPERFAMILY	SSF81321		15	152	6.32E-32	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Pfam	PF00001	7 transmembrane receptor (rhodopsin family)	63	152	7.1E-25	T	29-08-2018	IPR000276	G protein-coupled receptor, rhodopsin-like	GO:0004930|GO:0007186|GO:0016021	
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Phobius	TRANSMEMBRANE	Region of a membrane-bound protein predicted to be embedded in the membrane.	124	145	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00657	Chemokine receptor signature	95	105	1.3E-8	T	29-08-2018	IPR000355	Chemokine receptor family	GO:0004950|GO:0006935|GO:0007186|GO:0016021	Reactome: R-HSA-380108|Reactome: R-HSA-418594
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00657	Chemokine receptor signature	36	54	1.3E-8	T	29-08-2018	IPR000355	Chemokine receptor family	GO:0004950|GO:0006935|GO:0007186|GO:0016021	Reactome: R-HSA-380108|Reactome: R-HSA-418594
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00657	Chemokine receptor signature	71	84	1.3E-8	T	29-08-2018	IPR000355	Chemokine receptor family	GO:0004950|GO:0006935|GO:0007186|GO:0016021	Reactome: R-HSA-380108|Reactome: R-HSA-418594
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	PRINTS	PR00657	Chemokine receptor signature	122	135	1.3E-8	T	29-08-2018	IPR000355	Chemokine receptor family	GO:0004950|GO:0006935|GO:0007186|GO:0016021	Reactome: R-HSA-380108|Reactome: R-HSA-418594
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Phobius	CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the cytoplasm.	75	82	-	T	29-08-2018
+CCR6-205	4b1503d0c1a0d173df98e93980efcd16	155	Phobius	CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the cytoplasm.	146	155	-	T	29-08-2018

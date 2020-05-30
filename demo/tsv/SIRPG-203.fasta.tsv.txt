@@ -1,0 +1,20 @@
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Phobius	TRANSMEMBRANE	Region of a membrane-bound protein predicted to be embedded in the membrane.	146	166	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	SMART	SM00409		38	156	1.6E-4	T	05-08-2018	IPR003599	Immunoglobulin subtype		
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	SMART	SM00406		48	121	0.0042	T	05-08-2018	IPR013106	Immunoglobulin V-set domain		
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	PANTHER	PTHR19971:SF6		144	170	2.9E-107	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	PANTHER	PTHR19971:SF6		1	145	2.9E-107	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Phobius	SIGNAL_PEPTIDE_C_REGION	C-terminal region of a signal peptide.	24	28	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	PANTHER	PTHR19971		144	170	2.9E-107	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	PANTHER	PTHR19971		1	145	2.9E-107	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Phobius	SIGNAL_PEPTIDE_N_REGION	N-terminal region of a signal peptide.	1	11	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	CDD	cd16097	IgV_SIRP	33	143	5.30832E-82	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	29	145	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Gene3D	G3DSA:2.60.40.10		33	146	9.1E-30	T	05-08-2018	IPR013783	Immunoglobulin-like fold		
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	142	164	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Phobius	CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the cytoplasm.	167	170	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Phobius	SIGNAL_PEPTIDE	Signal peptide region	1	28	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Phobius	SIGNAL_PEPTIDE_H_REGION	Hydrophobic region of a signal peptide.	12	23	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	SUPERFAMILY	SSF48726		33	140	1.42E-14	T	05-08-2018	IPR036179	Immunoglobulin-like domain superfamily		
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	SignalP_EUK	SignalP-noTM		1	28	-	T	05-08-2018
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	Pfam	PF07686	Immunoglobulin V-set domain	37	127	1.3E-14	T	05-08-2018	IPR013106	Immunoglobulin V-set domain		
+SIRPG-203	2d84e4438353faa1d6c07e93dc0625dd	170	ProSiteProfiles	PS50835	Ig-like domain profile.	13	119	8.538	T	05-08-2018	IPR007110	Immunoglobulin-like domain		

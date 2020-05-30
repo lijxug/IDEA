@@ -1,0 +1,21 @@
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Phobius	SIGNAL_PEPTIDE_H_REGION	Hydrophobic region of a signal peptide.	5	16	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	SignalP_GRAM_POSITIVE	SignalP-TM		1	18	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	SignalP_EUK	SignalP-noTM		1	21	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Phobius	CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the cytoplasm.	170	198	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	22	145	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Pfam	PF07686	Immunoglobulin V-set domain	29	129	5.2E-16	T	29-08-2018	IPR013106	Immunoglobulin V-set domain		
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Phobius	SIGNAL_PEPTIDE_C_REGION	C-terminal region of a signal peptide.	17	21	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	111	133	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	CDD	cd05720	Ig_CD8_alpha	31	133	2.19975E-56	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	SMART	SM00409		28	134	8.6E-8	T	29-08-2018	IPR003599	Immunoglobulin subtype		
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	TMHMM	TMhelix	Region of a membrane-bound protein predicted to be embedded in the membrane.	148	170	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	PANTHER	PTHR10441		135	198	5.7E-87	T	29-08-2018	IPR015468	CD8 alpha subunit		Reactome: R-HSA-198933
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	PANTHER	PTHR10441		1	137	5.7E-87	T	29-08-2018	IPR015468	CD8 alpha subunit		Reactome: R-HSA-198933
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	SMART	SM00406		38	117	1.8E-7	T	29-08-2018	IPR013106	Immunoglobulin V-set domain		
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Phobius	SIGNAL_PEPTIDE	Signal peptide region	1	21	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Gene3D	G3DSA:2.60.40.10		22	139	8.0E-26	T	29-08-2018	IPR013783	Immunoglobulin-like fold		
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	SUPERFAMILY	SSF48726		23	128	3.75E-18	T	29-08-2018	IPR036179	Immunoglobulin-like domain superfamily		
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Phobius	SIGNAL_PEPTIDE_N_REGION	N-terminal region of a signal peptide.	1	4	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	ProSiteProfiles	PS50835	Ig-like domain profile.	21	117	7.831	T	29-08-2018	IPR007110	Immunoglobulin-like domain		
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	SignalP_GRAM_NEGATIVE	SignalP-noTM		1	18	-	T	29-08-2018
+CD8A-204	e00ae37224ea6983c612d778d1a0a68e	198	Phobius	TRANSMEMBRANE	Region of a membrane-bound protein predicted to be embedded in the membrane.	146	169	-	T	29-08-2018

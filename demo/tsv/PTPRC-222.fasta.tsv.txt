@@ -1,0 +1,8 @@
+PTPRC-222	d8d6beca0bbcf119b284ac472045fa5e	146	Pfam	PF12567	Leukocyte receptor CD45	74	132	2.7E-27	T	29-08-2018	IPR016335	Receptor-type tyrosine-protein phosphatase C	GO:0004725|GO:0050852	Reactome: R-HSA-202427|Reactome: R-HSA-416700|Reactome: R-HSA-6798695
+PTPRC-222	d8d6beca0bbcf119b284ac472045fa5e	146	Phobius	SIGNAL_PEPTIDE_C_REGION	C-terminal region of a signal peptide.	16	23	-	T	29-08-2018
+PTPRC-222	d8d6beca0bbcf119b284ac472045fa5e	146	Phobius	SIGNAL_PEPTIDE_H_REGION	Hydrophobic region of a signal peptide.	7	15	-	T	29-08-2018
+PTPRC-222	d8d6beca0bbcf119b284ac472045fa5e	146	Phobius	NON_CYTOPLASMIC_DOMAIN	Region of a membrane-bound protein predicted to be outside the membrane, in the extracellular region.	24	146	-	T	29-08-2018
+PTPRC-222	d8d6beca0bbcf119b284ac472045fa5e	146	Phobius	SIGNAL_PEPTIDE	Signal peptide region	1	23	-	T	29-08-2018
+PTPRC-222	d8d6beca0bbcf119b284ac472045fa5e	146	Pfam	PF12453	Protein tyrosine phosphatase N terminal	5	30	2.8E-17	T	29-08-2018	IPR024739	Protein tyrosine phosphatase, receptor type, N-terminal		Reactome: R-HSA-202427|Reactome: R-HSA-416700|Reactome: R-HSA-6798695
+PTPRC-222	d8d6beca0bbcf119b284ac472045fa5e	146	SignalP_EUK	SignalP-noTM		1	23	-	T	29-08-2018
+PTPRC-222	d8d6beca0bbcf119b284ac472045fa5e	146	Phobius	SIGNAL_PEPTIDE_N_REGION	N-terminal region of a signal peptide.	1	6	-	T	29-08-2018
