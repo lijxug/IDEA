@@ -9,6 +9,8 @@ Run the codes in the following order:
 
 - [01.calculateEnrichment.Rmd](01.calculateEnrichment.Rmd) perform the enrichment analysis 
 - [02.Annotation_and_Event_detection.Rmd](02.Annotation_and_Event_detection.Rmd) add functional and structural annotations to transcripts
-- [03.plotEnrichmentofGenes.Rmd](03.plotEnrichmentofGenes.Rmd) drawing the organized plot. A successful run results in a plot shown in [this page](03.plotEnrichmentofGenes.html).
+- [03.plotEnrichmentofGenes.Rmd](03.plotEnrichmentofGenes.Rmd) drawing the organized plot. A successful run results in plots like the one shown below.
+
+![CD8T_CD8A](CD8T_CD8A.png)
 
 
