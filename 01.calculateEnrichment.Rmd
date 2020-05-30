@@ -28,16 +28,16 @@ knitr::opts_chunk$set(
 wd = getwd()
 source(paste0(wd, "/utils/ToolKit.R"))
 source(paste0(wd, "/utils/utils.R"))
-target_CDTypes = c("CD8", "CD4") # MAIT will be removed when running CD8+ T cells
 # out_dir = "/your/path/"
-input_path = paste0(wd, "/../IDEA_data/01.IDEAinputs/scLUNGscescet.RDS") 
-out_dir = "/data2/jason/data/IDEA_data/02.IDEAoutputs/"
-path_to_GENEINFO = paste0(wd, "/../IDEA_data/01.IDEAinputs/GRCh38.p12.biomart.transcripts.txt")
+input_path = paste0(wd, "/demo/demo.SCE.rds") 
+out_dir = paste0(wd, "/demo/")
+path_to_GENEINFO = paste0(wd, "/demo/GRCh38.p12.biomart.transcripts.txt.gz")
 
 usage_cutoff = 0.75
 transcript_express_cutoff = 10
 step = 100
 cores_to_use = 10
+target_CDType = "CD8"
 ```
 
 
@@ -54,7 +54,7 @@ theme_set(theme_classic(base_size = 20))
 
 
 # load data ----
-all_sceObj = read_rds(input_path) 
+sceObj = read_rds(input_path) 
 GENE.INFO = read_tsv(path_to_GENEINFO)
 GENE.INFO = GENE.INFO %>% dplyr::filter(`Chromosome/scaffold name` %in% c(as.character(1:22), "X", "Y", "MT"))
 ```
@@ -62,179 +62,172 @@ GENE.INFO = GENE.INFO %>% dplyr::filter(`Chromosome/scaffold name` %in% c(as.cha
 # Run enrichment analysis
 ```{r}
 # Run pipeline
-wb = EXWB.initiate()
-for(target_CDType in target_CDTypes) {
-  cat("Now running", target_CDType, "\n")
-  if (target_CDType == "CD8") {
-    chn_clusters = all_sceObj$characteristics..majorCluster %>% unique() %>% grep(pattern = target_CDType, value = T) %>% 
-      grep(pattern = "C7", invert = T, value = T) # extract CD8+ T cells without MAIT cells 
-    } else if (target_CDType == "CD4") {
-    chn_clusters = (
-      all_sceObj$characteristics..majorCluster %>% unique() %>% grep(pattern = "CD4", value = T)
-    )[1:9]
-  }
-  chn_cells = all_sceObj$characteristics..majorCluster %in% chn_clusters
-  sceObj = all_sceObj[, chn_cells]
-  
-  # remove txs not in the normal annotation
-  
-  keep_tx = rownames(sceObj) %in% GENE.INFO$`Transcript name`
-  loginfo(
-    "Filter out txs on alternative haplotypes: ",
-    sum(keep_tx),
-    "/",
-    length(keep_tx),
-    " remained."
-  )
-  
-  sceObj = sceObj[keep_tx,]
-  
-  rm(list = grep(ls(), pattern = "^chn_", value = T))
-  invisible(gc())
-  
-  exprMat = assay(sceObj, "tpm")
-  pCells = as_tibble(colData(sceObj))
-  exprMat_sum = rowsum(exprMat, group = rownames(exprMat) %>% trans2gene())
-  exprMat_sum_tbl = exprMat_sum %>% melt(varnames = c("Gene_name", "Cell_id"),
-                                         value.name = "tpm") %>% dplyr::mutate(
-                                           cluster = pCells$characteristics..majorCluster[match(Cell_id, pCells$title)],
-                                           tissue = pCells$characteristics..tissueType[match(Cell_id, pCells$title)]
-                                         ) %>% as_tibble()
-  
-  # Filtering ----
-  # genes with more than 1 annotation ----
-  genes_anntx_counts = GENE.INFO %>% group_by(`Gene name`) %>% summarise(ann_count = length(unique(`Transcript name`)))
-  genes_morethan1ann = (genes_anntx_counts %>% dplyr::filter(ann_count > 1))$`Gene name`
-  genes_morethan1ann = intersect(genes_morethan1ann, rownames(exprMat_sum))
-  
-  # extract data ----
-  usageMat = assay(sceObj, "usage")
-  sceObj = sceObj[,!is.na(usageMat[1,])]
-  usageMat = assay(sceObj, "usage")
-  
-  # remove transcripts with only one txs annotate ----
-  keep_tx = (rownames(usageMat) %>% trans2gene()) %in% genes_morethan1ann
-  sceObj = sceObj[keep_tx, ]
-  usageMat = assay(sceObj, "usage")
-  exprMat = assay(sceObj, "tpm")
-  pCells = as_tibble(colData(sceObj))
-  pGenes = as_tibble(rowData(sceObj))
-  
-  
-  # remove transcripts with only one txs remained ----
-  genes_morethan1remain = rownames(usageMat) %>% trans2gene() %>% table()
-  genes_morethan1remain = names(genes_morethan1remain[genes_morethan1remain >
-                                                        1])
-  keep_tx = (rownames(usageMat) %>% trans2gene()) %in% genes_morethan1ann
-  usageMat = usageMat[keep_tx,]
-  exprMat = exprMat[keep_tx,]
-  
-  # cleanup ----
-  loginfo(
-    length(genes_morethan1ann),
-    "/",
-    nrow(exprMat_sum),
-    " genes with more than 1 annotations"
-  )
-  loginfo(
-    length(genes_morethan1remain),
-    "/",
-    nrow(exprMat_sum),
-    " genes with more than 1 remian"
-  )
-  
-  loginfo("Filter out isoforms: ", nrow(usageMat), "/", nrow(pGenes))
-  
-  write_rds(sceObj, path = paste0(out_dir, "/", target_CDType, "_sceObj.rds"))
-  write_rds(usageMat, path = paste0(out_dir, "/", target_CDType, "_flt_usageMat.rds"))
-  
-  rm(sceObj, keep_tx)
-  invisible(gc())
-  
-  
-  # Enrichment calculation ----
-  chosen_genes = exprMat %>% rownames() %>% trans2gene() %>% unique()
-  
-  steps = c(seq(1, length(chosen_genes), by = step), length(chosen_genes) +
-              1)
-  iter01 = ".I1"
-  initiatePB(iter01)
-  all_obj_lst = list()
-  for (i in 2:length(steps)) {
-    # for(i in 1:length(chosen_genes)){
-    t_chosen_genes = chosen_genes[steps[i - 1]:(steps[i] - 1)]
-    obj_lst = mclapply(
-      t_chosen_genes,
-      mc.cores = cores_to_use,
-      FUN = function(chosen_gene) {
-        # chosen_gene = chosen_genes[i]
-        obj = local_calculate_fishers(
-          gene_name = chosen_gene,
-          expression_matrix = exprMat,
-          usage_matrix = usageMat,
-          cell_info = pCells
-        )
-        return(obj)
-      }
-    )
-    names(obj_lst) = t_chosen_genes
-    all_obj_lst = c(all_obj_lst, obj_lst)
-    
-    processBar(iter01, i, length(steps), tail = "ETA")
-  }
-  # saving enrichment results
-  
-  
-  # identify txs with ???
-  canonical_txs = mclapply(all_obj_lst, mc.cores = cores_to_use,
-                           function(x) {
-                             (x$count %>% apply(1, sum) %>% sort(decreasing = T) %>% names())[1]
-                           }) %>% unlist()
-  canonical_txs = canonical_txs[grep(canonical_txs, pattern = "NO_EXPR|MIX", invert = T)]
-  
-  enrichment_tbl = do.call(rbind,
-                           mclapply(all_obj_lst, mc.cores = cores_to_use, function(x) {
-                             return(
-                               x$fisher.p.adj %>% melt(
-                                 value.name = "enrich_score",
-                                 varnames = c("id", "cluster")
-                               ) %>% as_tibble(stringsAsFactors = F) %>% dplyr::filter(enrich_score > -log10(0.05)) %>% mutate_if(is.factor, as.character)
-                             )
-                           }))
-  enrichment_tbl = enrichment_tbl %>% dplyr::mutate(gene_name = trans2gene(id)) %>% dplyr::distinct() %>%
-    dplyr::filter(!grepl(id, pattern = "NO_EXPR"))
-  
-  genes_morethan1enr_tbl = enrichment_tbl %>% group_by(gene_name, id, cluster) %>% summarise(counts = n()) %>% 
-  group_by(gene_name) %>% summarise(id_count = length(unique(id)), cluster_count = length(unique(cluster))) %>% 
-  dplyr::mutate(filter_flag = id_count > 1 & cluster_count > 1)
-  
-  
-  enrichment_filter_tbl = enrichment_tbl %>%
-    dplyr::filter(gene_name %in%
-                    (genes_morethan1enr_tbl %>% dplyr::filter(filter_flag == T))$gene_name) %>% distinct()
-  loginfo("# of genes with more than 1 enrichment in more than 1 clusters: ",
-          length(unique(enrichment_filter_tbl$gene_name)))
-  
-  wb = EXWB.writeSheet(wb,
-                       sheetName = paste0("enrichment_", target_CDType),
-                       sheetData = enrichment_tbl)
-  
-  
-  loginfo("Saving analysis data bundle")
-  write_rds(all_obj_lst,
-            path = paste0(out_dir, "/", target_CDType, "_enrichment_obj_lst.rds"))
-  
-  
-  save(
-    enrichment_filter_tbl, enrichment_tbl, GENE.INFO, pGenes, pCells, 
-    exprMat_sum_tbl, 
-    file = paste0(out_dir, "01.", target_CDType, "_analysis_bundle.RDa")
-  )
-  
-  rm(list = grep(ls(), pattern = "^t_", value = T))
-  invisible(gc())
-}
+cat("Now running", target_CDType, "\n")
 
+# remove txs not in the normal annotation
+
+keep_tx = rownames(sceObj) %in% GENE.INFO$`Transcript name`
+loginfo(
+  "Filter out txs on alternative haplotypes: ",
+  sum(keep_tx),
+  "/",
+  length(keep_tx),
+  " remained."
+)
+
+sceObj = sceObj[keep_tx, ]
+
+rm(list = grep(ls(), pattern = "^chn_", value = T))
+invisible(gc())
+
+exprMat = assay(sceObj, "tpm")
+pCells = as_tibble(colData(sceObj))
+exprMat_sum = rowsum(exprMat, group = rownames(exprMat) %>% trans2gene())
+exprMat_sum_tbl = exprMat_sum %>% melt(varnames = c("Gene_name", "Cell_id"),
+                                       value.name = "tpm") %>% dplyr::mutate(
+                                         cluster = pCells$characteristics..majorCluster[match(Cell_id, pCells$title)],
+                                         tissue = pCells$characteristics..tissueType[match(Cell_id, pCells$title)]
+                                       ) %>% as_tibble()
+
+# Filtering ----
+# genes with more than 1 annotation ----
+genes_anntx_counts = GENE.INFO %>% group_by(`Gene name`) %>% summarise(ann_count = length(unique(`Transcript name`)))
+genes_morethan1ann = (genes_anntx_counts %>% dplyr::filter(ann_count > 1))$`Gene name`
+genes_morethan1ann = intersect(genes_morethan1ann, rownames(exprMat_sum))
+
+# extract data ----
+usageMat = assay(sceObj, "usage")
+sceObj = sceObj[, !is.na(usageMat[1, ])]
+usageMat = assay(sceObj, "usage")
+
+# remove transcripts with only one txs annotate ----
+keep_tx = (rownames(usageMat) %>% trans2gene()) %in% genes_morethan1ann
+sceObj = sceObj[keep_tx,]
+usageMat = assay(sceObj, "usage")
+exprMat = assay(sceObj, "tpm")
+pCells = as_tibble(colData(sceObj))
+pGenes = as_tibble(rowData(sceObj))
+
+
+# remove transcripts with only one txs remained ----
+genes_morethan1remain = rownames(usageMat) %>% trans2gene() %>% table()
+genes_morethan1remain = names(genes_morethan1remain[genes_morethan1remain >
+                                                      1])
+keep_tx = (rownames(usageMat) %>% trans2gene()) %in% genes_morethan1ann
+usageMat = usageMat[keep_tx, ]
+exprMat = exprMat[keep_tx, ]
+
+# cleanup ----
+loginfo(
+  length(genes_morethan1ann),
+  "/",
+  nrow(exprMat_sum),
+  " genes with more than 1 annotations"
+)
+loginfo(length(genes_morethan1remain),
+        "/",
+        nrow(exprMat_sum),
+        " genes with more than 1 remian")
+
+loginfo("Filter out isoforms: ", nrow(usageMat), "/", nrow(pGenes))
+
+write_rds(sceObj, path = paste0(out_dir, "/", target_CDType, "_sceObj.rds"))
+write_rds(usageMat,
+          path = paste0(out_dir, "/", target_CDType, "_flt_usageMat.rds"))
+
+rm(sceObj, keep_tx)
+invisible(gc())
+
+
+# Enrichment calculation ----
+chosen_genes = exprMat %>% rownames() %>% trans2gene() %>% unique()
+
+steps = c(seq(1, length(chosen_genes), by = step), length(chosen_genes) +
+            1)
+iter01 = ".I1"
+initiatePB(iter01)
+all_obj_lst = list()
+for (i in 2:length(steps)) {
+  # for(i in 1:length(chosen_genes)){
+  t_chosen_genes = chosen_genes[steps[i - 1]:(steps[i] - 1)]
+  obj_lst = mclapply(
+    t_chosen_genes,
+    mc.cores = cores_to_use,
+    FUN = function(chosen_gene) {
+      # chosen_gene = chosen_genes[i]
+      obj = local_calculate_fishers(
+        gene_name = chosen_gene,
+        expression_matrix = exprMat,
+        usage_matrix = usageMat,
+        cell_info = pCells
+      )
+      return(obj)
+    }
+  )
+  names(obj_lst) = t_chosen_genes
+  all_obj_lst = c(all_obj_lst, obj_lst)
+  
+  processBar(iter01, i, length(steps), tail = "ETA")
+}
+# saving enrichment results
+
+
+# identify txs with ???
+canonical_txs = mclapply(all_obj_lst, mc.cores = cores_to_use,
+                         function(x) {
+                           (x$count %>% apply(1, sum) %>% sort(decreasing = T) %>% names())[1]
+                         }) %>% unlist()
+canonical_txs = canonical_txs[grep(canonical_txs, pattern = "NO_EXPR|MIX", invert = T)]
+
+enrichment_tbl = do.call(rbind,
+                         mclapply(all_obj_lst, mc.cores = cores_to_use, function(x) {
+                           return(
+                             x$fisher.p.adj %>% melt(
+                               value.name = "enrich_score",
+                               varnames = c("id", "cluster")
+                             ) %>% as_tibble(stringsAsFactors = F) %>% dplyr::filter(enrich_score > -log10(0.05)) %>% mutate_if(is.factor, as.character)
+                           )
+                         }))
+enrichment_tbl = enrichment_tbl %>% dplyr::mutate(gene_name = trans2gene(id)) %>% dplyr::distinct() %>%
+  dplyr::filter(!grepl(id, pattern = "NO_EXPR"))
+
+genes_morethan1enr_tbl = enrichment_tbl %>% group_by(gene_name, id, cluster) %>% summarise(counts = n()) %>%
+  group_by(gene_name) %>% summarise(id_count = length(unique(id)),
+                                    cluster_count = length(unique(cluster))) %>%
+  dplyr::mutate(filter_flag = id_count > 1 & cluster_count > 1)
+
+
+enrichment_filter_tbl = enrichment_tbl %>%
+  dplyr::filter(gene_name %in%
+                  (genes_morethan1enr_tbl %>% dplyr::filter(filter_flag == T))$gene_name) %>% distinct()
+loginfo("# of genes with more than 1 enrichment in more than 1 clusters: ",
+        length(unique(enrichment_filter_tbl$gene_name)))
+
+wb = EXWB.initiate()
+wb = EXWB.writeSheet(wb,
+                     sheetName = paste0("enrichment_", target_CDType),
+                     sheetData = enrichment_tbl)
 # Saving tables
 openxlsx::saveWorkbook(wb, file = paste0(out_dir, "/IDEA_enrichment_table.xlsx"), overwrite = T)
+
+
+loginfo("Saving analysis data bundle")
+write_rds(all_obj_lst,
+          path = paste0(out_dir, "/", target_CDType, "_enrichment_obj_lst.rds"))
+
+
+save(
+  enrichment_filter_tbl,
+  enrichment_tbl,
+  GENE.INFO,
+  pGenes,
+  pCells,
+  exprMat_sum_tbl,
+  file = paste0(out_dir, "01.", target_CDType, "_analysis_bundle.RDa")
+)
+
+rm(list = grep(ls(), pattern = "^t_", value = T))
+invisible(gc())
+
+
 ```
