@@ -1156,7 +1156,7 @@ local_loadDomains = function(annotation_tsvs, process = T){
   initiatePB(iter02)
   for (i in 1:length(annotation_tsvs)) {
     tmp_file = annotation_tsvs[i]
-    trans_name = tmp_file %>% stringr::str_replace(".*//(.*)\\.fasta.*", replacement = "\\1")
+    trans_name = tmp_file %>% str_extract(pattern = "[^/]+$") %>% str_extract(pattern = ".*-\\d{3}")
     if(file.exists(tmp_file)){
       trans_info = suppressMessages(suppressWarnings(readr::read_tsv(
       tmp_file, col_names = F, progress = F
